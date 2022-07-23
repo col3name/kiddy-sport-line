@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+option go_package = "kiddy-line-processor/infrastructure/grpc/proto";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.helloworld";
+option java_outer_classname = "HelloWorldProto";
+
+package proto;
+
+service KiddyLineProcessor {
+  rpc SubscribeOnSportsLines(stream SubscribeRequest) returns (stream SubscribeResponse) {}
+}
+
+message Sport {
+  string type = 1;
+  float line = 2;
+}
+
+message SubscribeRequest {
+  int32 intervalInSecond = 1;
+  repeated string sports = 2;
+}
+message SubscribeResponse {
+  repeated Sport sports = 1;
+}
