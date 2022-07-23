@@ -91,17 +91,18 @@ func (s *Server) SubscribeOnSportsLines(stream pb.KiddyLineProcessor_SubscribeOn
 			if len(oldValue) != len(in.Sports) {
 				isNeedDelta = false
 			} else {
+                                good := true
 				for _, sportType := range sportRequest {
 					_, ok := s.routeNotes[ip][sportType]
 					if !ok {
-						isNeedDelta = false
+						good, isNeedDelta = false, false
 						break
 					}
 				}
-				isNeedDelta = true
+                                if good {
+                                        isNeedDelta = true
+                                }
 			}
-		} else {
-			isNeedDelta = false
 		}
 		if !isNeedDelta {
 			s.routeNotes[ip] = make(map[commonDomain.SportType]float32, 0)
