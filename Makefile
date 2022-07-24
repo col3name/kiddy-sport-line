@@ -8,10 +8,18 @@ run-loc:
 	go build -o linesProvider.exe cmd/lines-provider/main.go && linesProvider.exe
 
 run-loc2:
-	go build -o linesProvider.exe cmd/kiddy-line-processor/main.go && kidyLinesProvider.exe
+	go build -o kiddyLinesProvider.exe cmd/kiddy-line-processor/main.go && kiddyLinesProvider.exe
 
 tests:
 	go test ./...
+
+build:
+        export GOARCH=amd64
+        export GOOS=linux
+	export CGO_ENABLED=0
+        go build -o bin/linesProvider cmd/lines-provider/main.go
+        go build -o bin/kiddyLinesProvider cmd/kiddy-line-processor/main.go
+        go build -o bin/client cmd/client/main.go
 
 run: lint
 	docker compose build --parallel
