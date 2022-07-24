@@ -30,7 +30,7 @@ type SportLine struct {
 }
 
 func (s *SportLine) SetScore(score string) error {
-	value, err := strconv.ParseFloat(score, 10)
+	value, err := strconv.ParseFloat(score, 32)
 	if err != nil {
 		return ErrInvalidScore
 	}

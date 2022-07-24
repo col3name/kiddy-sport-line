@@ -10,8 +10,15 @@ run-loc:
 run-loc2:
 	go build -o linesProvider.exe cmd/kiddy-line-processor/main.go && kidyLinesProvider.exe
 
-build:
-	docker run -p 8000:8000 mikhailmi/lines-provider
+tests:
+	go test ./...
 
-run: build
-	docker run -p 8000:8000 mikhailmi/lines-provider
+run: lint
+	docker compose build --parallel
+	docker compose up -d
+
+stop:
+	docker compose down
+
+reload:
+	make down && make build

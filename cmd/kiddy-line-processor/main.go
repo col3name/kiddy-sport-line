@@ -24,14 +24,15 @@ import (
 )
 
 func main() {
-	config := newConfig()
-	db := setupDb(config.DbUrl)
+	conf := setupConfig()
+	// TODO make migration
+	db := setupDb(conf.DbUrl)
 	sportLineRepo := postgres.NewSportLineRepository(db)
 	var wg sync.WaitGroup
-	wg.Add(3)
-	go runHttpServer(&wg, config.HttpUrl)
-	go runGrpcServer(&wg, config.GrpcUrl, sportLineRepo)
-	//go runSpotLineUpdateWorkers(&wg, sportLineRepo, config.LinesProviderUrl, config.UpdatePeriod)
+	wg.Add(2)
+	go runHttpServer(&wg, conf.HttpUrl)
+	go runGrpcServer(&wg, conf.GrpcUrl, sportLineRepo)
+	go runSpotLineUpdateWorkers(sportLineRepo, conf.LinesProviderUrl, conf.UpdatePeriod)
 	wg.Wait()
 }
 
@@ -44,12 +45,12 @@ type config struct {
 	DbUrl            string
 }
 
-func newConfig() *config {
+func setupConfig() *config {
 	updatePeriod := 1
-	nStr := os.Getenv("N")
+	nStr := os.Getenv("UPDATE_INTERVAL")
 	if len(nStr) > 0 {
 		val, err := strconv.Atoi(nStr)
-		errPositive := "N must be positive integer"
+		errPositive := "UPDATE_INTERVAL must be positive integer"
 		if err != nil {
 			log.Error(errPositive)
 		}
@@ -65,11 +66,19 @@ func newConfig() *config {
 	if len(dbURL) == 0 {
 		dbURL = "postgres://postgres:postgres@localhost:5432/lines"
 	}
+	httpUrl := os.Getenv("HTTP_URL")
+	if len(httpUrl) == 0 {
+		httpUrl = ":3333"
+	}
+	grpcUrl := os.Getenv("GRPC_URL")
+	if len(grpcUrl) == 0 {
+		grpcUrl = ":50051"
+	}
 
 	return &config{
 		UpdatePeriod:     updatePeriod,
-		HttpUrl:          ":3333",
-		GrpcUrl:          ":50051",
+		HttpUrl:          httpUrl,
+		GrpcUrl:          grpcUrl,
 		LinesProviderUrl: linesProviderUrl,
 		DbUrl:            dbURL,
 		LogLevel:         "",
@@ -88,10 +97,14 @@ func setupDb(dbUrl string) *pgxpool.Pool {
 	return db
 }
 
-func runSpotLineUpdateWorkers(wg *sync.WaitGroup, sportLineRepo domain.SportRepo, url string, updatePeriod int) {
-	for _, sportType := range commonDomain.SupportSports {
-		wg.Add(1)
-		go pullLineWorker(wg, sportLineRepo, url, sportType, updatePeriod)
+func runHttpServer(wg *sync.WaitGroup, serverUrl string) {
+	defer wg.Done()
+	http.HandleFunc("/ready", netHttp.ReadyCheckHandler)
+
+	err := http.ListenAndServe(serverUrl, nil)
+	if err != nil {
+		log.Fatal(err)
+		return
 	}
 }
 
@@ -105,19 +118,14 @@ func runGrpcServer(wg *sync.WaitGroup, serveUrl string, repo domain.SportRepo) {
 	server := grpcServer.NewServer(repo)
 	pb.RegisterKiddyLineProcessorServer(s, server)
 	log.Printf("server listening at %v", lis.Addr())
-	if err := s.Serve(lis); err != nil {
+	if err = s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
-func runHttpServer(wg *sync.WaitGroup, serverUrl string) {
-	defer wg.Done()
-	http.HandleFunc("/ready", netHttp.ReadyCheckHandler)
-
-	err := http.ListenAndServe(serverUrl, nil)
-	if err != nil {
-		log.Fatal(err)
-		return
+func runSpotLineUpdateWorkers(sportLineRepo domain.SportRepo, url string, updatePeriod int) {
+	for _, sportType := range commonDomain.SupportSports {
+		go pullLineWorker(sportLineRepo, url, sportType, updatePeriod)
 	}
 }
 
@@ -145,27 +153,28 @@ type SoccerResp struct {
 	} `json:"lines"`
 }
 
-func pullLineWorker(wg *sync.WaitGroup, sportLineRepo domain.SportRepo, linesProviderUrl string, sportType commonDomain.SportType, period int) {
+func pullLineWorker(sportLineRepo domain.SportRepo, linesProviderUrl string, sportType commonDomain.SportType, period int) {
 	for {
 		url := fmt.Sprintf("%s/api/v1/lines/%s", linesProviderUrl, sportType)
-		fmt.Println(url)
 		resp, err := http.Get(url)
+		sleepDuration := time.Duration(period) * time.Second
 		if err != nil {
 			log.Error("failed get", sportType, "data", err)
-		} else {
-			sport, err := parseResp(resp, sportType)
-			if err != nil {
-				log.Error(err)
-			} else {
-				err = sportLineRepo.Store(sport)
-				if err != nil {
-					log.Error(err)
-				}
-			}
+			time.Sleep(sleepDuration)
+			continue
 		}
-		time.Sleep(time.Duration(period) * time.Second)
+		sport, err := parseResp(resp, sportType)
+		if err != nil {
+			log.Error(err)
+			time.Sleep(sleepDuration)
+			continue
+		}
+		err = sportLineRepo.Store(sport)
+		if err != nil {
+			log.Error(err)
+		}
+		time.Sleep(sleepDuration)
 	}
-	wg.Done()
 }
 
 func failedGetSportError(sportType commonDomain.SportType, err error) error {
@@ -181,7 +190,6 @@ func parseResp(resp *http.Response, sportType commonDomain.SportType) (*commonDo
 		return nil, failedGetSportError(sportType, nil)
 	}
 	bytes, err := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(bytes))
 	if err != nil {
 		log.Error(err)
 		return nil, failedGetSportError(sportType, err)

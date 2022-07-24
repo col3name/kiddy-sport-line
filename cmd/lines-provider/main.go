@@ -31,21 +31,8 @@ func main() {
 	apiV1Route.HandleFunc("/lines/{sport}", getLineSport)
 	serverUrl := ":" + strconv.Itoa(port)
 	log.Info("listen and serve at", serverUrl)
-	//server := netHttp.HttpServer{}
-	//killSignalChan := server.GetKillSignalChan()
-
-	//log.WithFields(log.Fields{"url": serverUrl}).Info("starting the server")
-	http.ListenAndServe(serverUrl, logMiddleware(r))
-	//srv := server.StartServer(getenv, h)
-	//fmt.Println(serverUrl)
-	//server.WaitForKillSignal(killSignalChan)
-	//err = srv.Shutdown(context.Background())
-	//if err != nil {
-	//	return
-	//}
+	_ = http.ListenAndServe(serverUrl, logMiddleware(r))
 }
-
-
 
 func getLineSport(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)

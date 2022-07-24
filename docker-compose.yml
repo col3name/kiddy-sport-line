@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  lines-provider:
+    ports:
+      - 8000:8000
+    build:
+      context: .
+      dockerfile: Dockerfile-linesProvider
+    environment:
+      PORT: 8000
+    restart: always
+    networks:
+      - dev-network
+  kiddy-lines-processor:
+    ports:
+      - 3333:3333
+      - 50051:50051
+    build:
+      context: .
+      dockerfile: Dockerfile-kiddyLinesProcessor
+    environment:
+      UPDATE_INTERVAL: 2
+      LINES_PROVIDER_URL: http://lines-provider:8000
+      HTTP_URL: kiddy-lines-processor:3333
+      GRPC_URL: kiddy-lines-processor:50051
+      DATABASE_URL: postgres://postgres:postgres@lines-postgres:5432/lines
+    restart: always
+    networks:
+      - dev-network
+    depends_on:
+      - lines-provider
+      - lines-postgres
+
+  lines-postgres:
+    image: postgres:10.5
+    hostname: lines
+    restart: always
+    ports:
+      - 5432:5432
+    volumes:
+      - lines-postgres-data:/var/lib/postgresql/data
+    #      - ./data/migrations/001_create_urls_table.up.sql:/docker-entrypoint-initdb.d/create_tables.sql
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lines
+    networks:
+      - dev-network
+
+volumes:
+  lines-postgres-data:
+
+networks:
+  dev-network:
+    driver: bridge
