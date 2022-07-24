@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/grpc/proto"
@@ -14,13 +14,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var (
-	addr = flag.String("addr", "localhost:50051", "the address to connect to")
-)
-
 func main() {
-	flag.Parse()
-	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	kiddyGrpcUrl := os.Getenv("KIDDY_LINES_PROCESSOR_GRPC_URL")
+	if len(kiddyGrpcUrl) == 0 {
+		kiddyGrpcUrl = "localhost:50051"
+	}
+
+	conn, err := grpc.Dial(kiddyGrpcUrl, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}

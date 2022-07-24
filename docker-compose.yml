@@ -1,6 +1,18 @@
 version: "3.9"
 
 services:
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile-client
+    environment:
+      KIDDY_LINES_PROCESSOR_GRPC_URL: kiddy-lines-processor:50051
+    restart: always
+    networks:
+      - dev-network
+    depends_on:
+      - kiddy-lines-processor
+
   lines-provider:
     ports:
       - 8000:8000
@@ -12,6 +24,7 @@ services:
     restart: always
     networks:
       - dev-network
+
   kiddy-lines-processor:
     ports:
       - 3333:3333
