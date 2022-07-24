@@ -1,9 +1,11 @@
 # Line Processor
 ![architecture](docs/img/arch.png "Architecture")
 
+![example workflow](https://github.com/col3name/kiddy-sport-line/actions/workflows/prod.yml/badge.svg)
+
 # TODO
 - [ ] migration
-- [ ] github actions ci
+- [x] github actions ci
 - [ ] logging level
 - [ ] unit tests
 
