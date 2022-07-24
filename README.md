@@ -8,7 +8,8 @@
 - [x] github actions ci
 - [ ] logging level
 - [ ] unit tests
-
+- [ ] performance test
+- [ ] refactor
 # Run
 Run docker compose
 `make start`
