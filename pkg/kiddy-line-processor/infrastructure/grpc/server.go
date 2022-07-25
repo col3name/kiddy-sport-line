@@ -8,7 +8,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io"
 	"math/rand"
-	"sync"
 	"time"
 )
 
@@ -26,13 +25,12 @@ func parseSportRequest(sports []string) []commonDomain.SportType {
 
 type Server struct {
 	pb.UnimplementedKiddyLineProcessorServer
-	mu                  sync.Mutex
 	subscriptionManager application.SubscriptionService
 }
 
 func NewServer(sportRepo domain.SportRepo) *Server {
 	return &Server{
-		subscriptionManager: *application.NewSubscriptionManager(sportRepo),
+		subscriptionManager: application.NewSubscriptionManager(sportRepo),
 	}
 }
 
@@ -78,7 +76,7 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 func (s *Server) sendDataToSubscribers(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer, clientId int) {
 	for {
 		for {
-			sender := &application.GrpcResponseSender{Stream: stream}
+			sender := &ResponseSenderGrpc{Stream: stream}
 			if ok := s.subscriptionManager.Subscribe(sender, clientId); !ok {
 				break
 			}

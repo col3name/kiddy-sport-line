@@ -9,8 +9,3 @@ type SubscriptionMessageDTO struct {
 	Sports               []commonDomain.SportType
 	UpdateIntervalSecond int32
 }
-
-type Sport struct {
-	Type string
-	Line float32
-}

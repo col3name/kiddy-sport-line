@@ -38,7 +38,7 @@ func handleGrpc(client pb.KiddyLineProcessorClient) {
 		log.Fatalf("client.RouteChat failed: %v", err)
 	}
 
-	sports := []string{string(commonDomain.Baseball)}
+	sports := []string{string(commonDomain.Soccer)}
 
 	handle := clientHandle{stream: stream}
 
@@ -84,6 +84,7 @@ func (c *clientHandle) receiveMessage() {
 		recv, err := c.stream.Recv()
 		if err == io.EOF {
 			log.Println("done", err)
+			break
 		} else if err != nil {
 			log.Fatalf("client.RouteChat failed: %v", err)
 		}
