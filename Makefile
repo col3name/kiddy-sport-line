@@ -13,6 +13,11 @@ run-loc2:
 tests:
 	go test ./...
 
+cover:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
+	go tool cover -html=coverage.out
+
 build:
 	export GOARCH=amd64
 	export GOOS=linux

@@ -1,11 +1,11 @@
 package application
 
 import (
-	commonDomain "github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/common/domain"
 )
 
 type SubscriptionMessageDTO struct {
 	ClientId             int
-	Sports               []commonDomain.SportType
+	Sports               []domain.SportType
 	UpdateIntervalSecond int32
 }

@@ -3,7 +3,6 @@ package grpc
 import (
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	log "github.com/sirupsen/logrus"
 	"io"
@@ -28,9 +27,9 @@ type Server struct {
 	subscriptionManager application.SubscriptionService
 }
 
-func NewServer(sportRepo domain.SportRepo) *Server {
+func NewServer(sportLineService application.SportLineService) *Server {
 	return &Server{
-		subscriptionManager: application.NewSubscriptionManager(sportRepo),
+		subscriptionManager: application.NewSubscriptionManager(sportLineService),
 	}
 }
 
@@ -49,16 +48,16 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 		in, err := stream.Recv()
 		if err == io.EOF {
 			log.Println(err)
-			s.subscriptionManager.UnsubscribeClient(clientId)
+			s.subscriptionManager.Unsubscribe(clientId)
 			errCh <- err
 		}
 		if err != nil {
 			log.Printf("Error in receiving message from client :: %v", err)
 			errCh <- err
-			s.subscriptionManager.UnsubscribeClient(clientId)
+			s.subscriptionManager.Unsubscribe(clientId)
 			continue
 		}
-		if in.IntervalInSecond < 1 {
+		if in.IntervalInSecond < 1 || len(in.Sports) == 0 {
 			log.Printf("Error in receiving message from client. interval must be positive number :: %v", err)
 			errCh <- err
 			continue
@@ -69,7 +68,11 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 			errCh <- err
 			continue
 		}
-		s.subscriptionManager.PushMessage(clientId, sportsList, in.IntervalInSecond)
+		s.subscriptionManager.PushMessage(&application.SubscriptionMessageDTO{
+			ClientId:             clientId,
+			Sports:               sportsList,
+			UpdateIntervalSecond: in.IntervalInSecond,
+		})
 	}
 }
 

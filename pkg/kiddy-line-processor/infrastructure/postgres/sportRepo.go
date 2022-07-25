@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	appErr "github.com/col3name/lines/pkg/common/application/errors"
 	"github.com/col3name/lines/pkg/common/domain"
@@ -10,12 +9,6 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"strings"
-)
-
-const TableNotExistMessage = " does not exist (SQLSTATE 42P01)"
-
-var (
-	ErrTableNotExist = errors.New("table does not exist")
 )
 
 type SportRepoImpl struct {
@@ -28,10 +21,10 @@ func NewSportLineRepository(conn *pgxpool.Pool) *SportRepoImpl {
 	return u
 }
 
-//sql := `SELECT score,sport_type FROM sport_lines WHERE sport_type = 'baseball'
-//UNION ALL
-//SELECT score, sport_type FROM sport_lines WHERE sport_type = 'football'`
-func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]domain.SportLine, error) {
+// SELECT score,sport_type FROM sport_lines WHERE sport_type = 'baseball'
+// UNION ALL
+// SELECT score, sport_type FROM sport_lines WHERE sport_type = 'football'`
+func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]*domain.SportLine, error) {
 	countSportTypes := len(sportTypes)
 	if countSportTypes < 1 {
 		return nil, appErr.ErrInvalidArgument
@@ -54,10 +47,9 @@ func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]domain.S
 
 	rows, err := r.conn.Query(context.Background(), sql, data...)
 	if err != nil {
-		s := err.Error()
-		contains := strings.Contains(s, TableNotExistMessage)
+		contains := strings.Contains(err.Error(), appErr.TableNotExistMessage)
 		if contains {
-			return nil, ErrTableNotExist
+			return nil, appErr.ErrTableNotExist
 		}
 		return nil, infrastructure.InternalError(err)
 	}
@@ -67,13 +59,13 @@ func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]domain.S
 	defer rows.Close()
 
 	var sport domain.SportLine
-	var sports []domain.SportLine
+	var sports []*domain.SportLine
 	for rows.Next() {
 		err = rows.Scan(&sport.Score, &sport.Type)
 		if err != nil {
 			return sports, infrastructure.InternalError(err)
 		}
-		sports = append(sports, sport)
+		sports = append(sports, &sport)
 	}
 	return sports, nil
 }

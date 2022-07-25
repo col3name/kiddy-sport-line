@@ -1,7 +1,6 @@
 package application
 
 import (
-	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"sync"
 )
 
@@ -17,20 +16,16 @@ func NewMessageQueue() *MessageQueue {
 	}
 }
 
-func (s *MessageQueue) Push(clientId int, sportsList []commonDomain.SportType, updateIntervalInSeconds int32) {
+func (s *MessageQueue) Push(dto *SubscriptionMessageDTO) {
 	s.mu.Lock()
-	s.clientSubMsgQueue = append(s.clientSubMsgQueue, &SubscriptionMessageDTO{
-		ClientId:             clientId,
-		Sports:               sportsList,
-		UpdateIntervalSecond: updateIntervalInSeconds,
-	})
+	s.clientSubMsgQueue = append(s.clientSubMsgQueue, dto)
 	s.mu.Unlock()
 }
 
 func (s *MessageQueue) Pop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.Empty() {
+	if !s.Empty() {
 		s.clientSubMsgQueue = s.clientSubMsgQueue[1:]
 	}
 }
@@ -39,13 +34,13 @@ func (s *MessageQueue) Peek() *SubscriptionMessageDTO {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.Empty() {
-		return s.clientSubMsgQueue[0]
+		return nil
 	}
-	return nil
+	return s.clientSubMsgQueue[0]
 }
 
 func (s *MessageQueue) Empty() bool {
-	return s.Size() > 0
+	return s.Size() == 0
 }
 func (s *MessageQueue) Size() int {
 	return len(s.clientSubMsgQueue)

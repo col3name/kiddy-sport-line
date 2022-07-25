@@ -7,7 +7,8 @@
 - [x] migration
 - [x] github actions ci
 - [ ] logging level
-- [ ] unit tests
+- [x] kiddy application unit tests
+- [ ] unit test for adapter
 - [ ] performance test
 - [x] refactor
 # Run
@@ -18,6 +19,8 @@ Run docker compose
 stop docker compose
 `make stop`
 
+## Test coverage
+`make cover`
 # Generate go code form proto file
 `make proto`
 # Lint

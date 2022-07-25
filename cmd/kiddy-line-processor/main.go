@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"github.com/col3name/lines/pkg/common/application/errors"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/adapter"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres"
@@ -38,7 +40,7 @@ func main() {
 func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn *pgxpool.Pool) {
 	_, err := sportLineRepo.GetSportLines([]commonDomain.SportType{commonDomain.Baseball})
 	if err != nil {
-		if err != postgres.ErrTableNotExist {
+		if err != errors.ErrTableNotExist {
 			log.Fatal(err)
 		}
 
@@ -154,7 +156,8 @@ func (s *service) runGrpcServer(wg *sync.WaitGroup) {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	grpcSrv := grpc.NewServer()
-	server := grpcServer.NewServer(s.sportLineRepo)
+	sportLineService := application.NewSportLineService(s.sportLineRepo)
+	server := grpcServer.NewServer(sportLineService)
 	pb.RegisterKiddyLineProcessorServer(grpcSrv, server)
 	log.Printf("server listening at %v", lis.Addr())
 	if err = grpcSrv.Serve(lis); err != nil {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/util/times"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
@@ -12,12 +11,12 @@ import (
 
 type SubscriptionService interface {
 	Subscribe(responseSender responseSender, clientId int) bool
-	PushMessage(clientId int, list []commonDomain.SportType, updateIntervalInSeconds int32)
-	UnsubscribeClient(clientId int)
+	PushMessage(dto *SubscriptionMessageDTO)
+	Unsubscribe(clientId int)
 }
 
 type ClientSubscription struct {
-	Sports map[commonDomain.SportType]float32
+	Sports SportTypeMap
 	Task   *time.Ticker
 }
 
@@ -29,31 +28,34 @@ type subscriptionServiceImpl struct {
 	mu               sync.Mutex
 }
 
-func NewSubscriptionManager(sportRepo domain.SportRepo) *subscriptionServiceImpl {
+func NewSubscriptionManager(sportLineService SportLineService) *subscriptionServiceImpl {
 	return &subscriptionServiceImpl{
 		subscriptions:    make(map[int]*ClientSubscription, 0),
 		messageQueue:     NewMessageQueue(),
-		sportLineService: NewSportLineService(sportRepo),
+		sportLineService: sportLineService,
 		timesTicker:      times.NewTimeTicker(),
 	}
 }
 
 func (s *subscriptionServiceImpl) Subscribe(responseSender responseSender, clientId int) bool {
-	subMsg := s.messageQueue.Peek()
-	if subMsg == nil {
+	if responseSender == nil {
 		return false
 	}
-	if subMsg.ClientId == clientId {
-		return s.addNotifySubscriberTask(responseSender, subMsg)
+	subMsg := s.messageQueue.Peek()
+	if subMsg == nil || (subMsg.ClientId != clientId) {
+		return false
 	}
-	return true
+	return s.addNotifySubscriberTask(responseSender, subMsg)
 }
 
-func (s *subscriptionServiceImpl) PushMessage(clientId int, list []commonDomain.SportType, updateIntervalInSeconds int32) {
-	s.messageQueue.Push(clientId, list, updateIntervalInSeconds)
+func (s *subscriptionServiceImpl) PushMessage(dto *SubscriptionMessageDTO) {
+	if len(dto.Sports) == 0 || dto.ClientId < 0 || dto.UpdateIntervalSecond < 1 {
+		return
+	}
+	s.messageQueue.Push(dto)
 }
 
-func (s *subscriptionServiceImpl) UnsubscribeClient(clientId int) {
+func (s *subscriptionServiceImpl) Unsubscribe(clientId int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sub, ok := s.subscriptions[clientId]
@@ -61,11 +63,16 @@ func (s *subscriptionServiceImpl) UnsubscribeClient(clientId int) {
 		return
 	}
 	sub.Task.Stop()
+	delete(s.subscriptions, clientId)
 }
 
 func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender responseSender, subMsg *SubscriptionMessageDTO) bool {
 	clientId := subMsg.ClientId
 	sports := subMsg.Sports
+	if len(sports) == 0 {
+		s.messageQueue.Pop()
+		return false
+	}
 	s.mu.Lock()
 	sub, isExistSubTask := s.subscriptions[clientId]
 	s.mu.Unlock()
@@ -80,6 +87,7 @@ func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender respons
 		s.addNotifySubscriberPeriodically(responseSender, subMsg)
 		return true
 	}
+	s.messageQueue.Pop()
 	return false
 }
 
@@ -122,7 +130,7 @@ func (s *subscriptionServiceImpl) isSubChanged(clientId int, sports []commonDoma
 }
 
 func (s *subscriptionServiceImpl) initClientSubscription(msg *SubscriptionMessageDTO) *ClientSubscription {
-	subToSports := make(map[commonDomain.SportType]float32, 0)
+	subToSports := make(SportTypeMap, 0)
 
 	for _, sportType := range msg.Sports {
 		subToSports[sportType] = 1.0
@@ -138,26 +146,21 @@ func (s *subscriptionServiceImpl) initClientSubscription(msg *SubscriptionMessag
 	return sub
 }
 
-func (s *SportLineServiceImpl) calculateLineOfSports(lines []commonDomain.SportLine, isNeedDelta bool, subs *ClientSubscription) []*domain.Sport {
-	var sportsResponse []*domain.Sport
+func (s *sportLineServiceImpl) calculateLineOfSports(lines []*commonDomain.SportLine, isNeedDelta bool, subs *ClientSubscription) []*commonDomain.SportLine {
 
-	for _, line := range lines {
-		resp := s.calculateLine(&line, isNeedDelta, subs)
-		fmt.Println(resp.Type, resp.Line)
-		sportsResponse = append(sportsResponse, resp)
+	for i, line := range lines {
+		s.calculateLine(line, isNeedDelta, subs)
+		fmt.Println(line.Type, line.Score)
+		lines[i] = line
 	}
-	return sportsResponse
+
+	return lines
 }
 
-func (s *SportLineServiceImpl) calculateLine(line *commonDomain.SportLine, isNeedDelta bool, subs *ClientSubscription) *domain.Sport {
+func (s *sportLineServiceImpl) calculateLine(line *commonDomain.SportLine, isNeedDelta bool, subs *ClientSubscription) {
 	sportType := line.Type
-	newScore := line.Score
 	if isNeedDelta {
-		newScore = newScore - subs.Sports[sportType]
+		line.Score = line.Score - subs.Sports[sportType]
 	}
 	subs.Sports[sportType] = line.Score
-	return &domain.Sport{
-		Type: sportType.String(),
-		Line: newScore,
-	}
 }

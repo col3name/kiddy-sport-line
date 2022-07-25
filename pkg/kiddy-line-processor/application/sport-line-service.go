@@ -1,48 +1,58 @@
 package application
 
 import (
+	"github.com/col3name/lines/pkg/common/application/errors"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
-	log "github.com/sirupsen/logrus"
 )
 
+type SportTypeMap map[commonDomain.SportType]float32
+
 type SportLineService interface {
-	Calculate(sports []commonDomain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.Sport, error)
-	IsChanged(exist bool, oldValue map[commonDomain.SportType]float32, newValue []commonDomain.SportType) bool
+	Calculate(sports []commonDomain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*commonDomain.SportLine, error)
+	IsChanged(exist bool, subscriptionMap SportTypeMap, newValue []commonDomain.SportType) bool
 }
 
-type SportLineServiceImpl struct {
+type sportLineServiceImpl struct {
 	sportRepo domain.SportRepo
 }
 
-func NewSportLineService(repo domain.SportRepo) *SportLineServiceImpl {
-	return &SportLineServiceImpl{sportRepo: repo}
+func NewSportLineService(repo domain.SportRepo) *sportLineServiceImpl {
+	return &sportLineServiceImpl{sportRepo: repo}
 }
 
-func (s *SportLineServiceImpl) IsChanged(exist bool, oldValue map[commonDomain.SportType]float32, sports []commonDomain.SportType) bool {
+func (s *sportLineServiceImpl) Calculate(sports []commonDomain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*commonDomain.SportLine, error) {
+	if subs == nil {
+		return nil, errors.ErrInvalidArgument
+	}
+	sportLines, err := s.sportRepo.GetSportLines(sports)
+	if err != nil {
+		return nil, err
+	}
+	return s.calculateLineOfSports(sportLines, isNeedDelta, subs), nil
+}
+
+func (s *sportLineServiceImpl) IsChanged(exist bool, subMap SportTypeMap, sports []commonDomain.SportType) bool {
+	if subMap == nil || len(sports) == 0 {
+		return false
+	}
 	isSubChanged := true
 	if exist {
-		if len(oldValue) != len(sports) {
-			isSubChanged = true
-		} else {
-			for _, sportType := range sports {
-				_, ok := oldValue[sportType]
-				if !ok {
-					isSubChanged = true
-					break
-				}
-			}
-		}
+		isSubChanged = !s.isEqual(subMap, sports)
 	}
 
 	return isSubChanged
 }
 
-func (s *SportLineServiceImpl) Calculate(sports []commonDomain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.Sport, error) {
-	sportLines, err := s.sportRepo.GetSportLines(sports)
-	if err != nil {
-		log.Println(err)
-		return []*domain.Sport{}, err
+func (s *sportLineServiceImpl) isEqual(oldValue SportTypeMap, sports []commonDomain.SportType) bool {
+	if len(oldValue) != len(sports) {
+		return false
 	}
-	return s.calculateLineOfSports(sportLines, isNeedDelta, subs), nil
+	for _, sportType := range sports {
+		_, ok := oldValue[sportType]
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
