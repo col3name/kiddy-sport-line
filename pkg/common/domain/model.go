@@ -7,14 +7,31 @@ import (
 
 type SportType string
 
-var (
+const (
 	Baseball SportType = "baseball"
 	Football SportType = "football"
 	Soccer   SportType = "soccer"
 )
 
+var (
+	ErrUnsupportedSportType = errors.New("unsupported sport type")
+)
+
 func (s SportType) String() string {
 	return string(s)
+}
+
+func NewSportType(sport string) (SportType, error) {
+	switch sport {
+	case Football.String():
+		return Football, nil
+	case Baseball.String():
+		return Baseball, nil
+	case Soccer.String():
+		return Soccer, nil
+	default:
+		return "", ErrUnsupportedSportType
+	}
 }
 
 var SupportSports = map[string]SportType{

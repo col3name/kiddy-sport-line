@@ -32,27 +32,12 @@ type Server struct {
 	sportRepo         domain.SportRepo
 }
 
-func parseSportRequest(sports []string) []commonDomain.SportType {
-	res := make([]commonDomain.SportType, 0)
-	for _, sport := range sports {
-		switch sport {
-		case string(commonDomain.Football):
-			res = append(res, commonDomain.Football)
-		case string(commonDomain.Baseball):
-			res = append(res, commonDomain.Baseball)
-		case string(commonDomain.Soccer):
-			res = append(res, commonDomain.Soccer)
-		}
-	}
-	return res
-}
-
 func (s *Server) SubscribeOnSportsLines(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer) error {
 	errorsCh := make(chan error)
 	clientUniqueCode := rand.Intn(1e6)
 
 	go s.receiveSubscriptions(stream, clientUniqueCode, errorsCh)
-	go s.sendSubData(stream, clientUniqueCode)
+	go s.sendDataToSubscribers(stream, clientUniqueCode)
 
 	return <-errorsCh
 }
@@ -86,7 +71,7 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 	}
 }
 
-func (s *Server) sendSubData(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer, clientId int) {
+func (s *Server) sendDataToSubscribers(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer, clientId int) {
 	for {
 		for {
 			s.mu.Lock()
@@ -103,6 +88,56 @@ func (s *Server) sendSubData(stream pb.KiddyLineProcessor_SubscribeOnSportsLines
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+func (s *Server) unsubscribeClient(id int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sub, ok := s.clientSubs[id]
+	if !ok || (ok && sub.Task == nil) {
+		return
+	}
+	sub.Task.Stop()
+}
+
+func parseSportRequest(sports []string) []commonDomain.SportType {
+	res := make([]commonDomain.SportType, 0)
+
+	for _, sportType := range sports {
+		if val, err := commonDomain.NewSportType(sportType); err == nil {
+			res = append(res, val)
+		}
+	}
+
+	return res
+}
+
+func (s *Server) sendResponse(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer, subMsg *ClientSubMsg) {
+	clientId := subMsg.ClientId
+	sports := subMsg.Sports
+	s.mu.Lock()
+	sub, isExistSubTask := s.clientSubs[clientId]
+	s.mu.Unlock()
+	if !isExistSubTask {
+		fmt.Println("first sub")
+		s.sendMessageToSubscribers(stream, subMsg)
+		return
+	}
+	if s.isSubChanged(clientId, sports) {
+		fmt.Println("change sub")
+		sub.Task.Stop()
+		s.sendMessageToSubscribers(stream, subMsg)
+	}
+}
+
+func (s *Server) sendMessageToSubscribers(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer, subMsg *ClientSubMsg) {
+	clientSub := s.initClientSub(subMsg)
+	fn := s.updateSportLineFn(stream, subMsg)
+	fn(false)
+	clientSub.Task = times.TickerHandle(subMsg.UpdateIntervalSecond, func() {
+		fn(true)
+	})
+	s.popSubMsgQueue()
 }
 
 func (s *Server) isSubChanged(clientId int, sports []commonDomain.SportType) bool {
@@ -129,7 +164,7 @@ func (s *Server) isSubChanged(clientId int, sports []commonDomain.SportType) boo
 	return isSubChanged
 }
 
-func (s *Server) initClientSub(clientId int, msg *ClientSubMsg) *ClientSub {
+func (s *Server) initClientSub(msg *ClientSubMsg) *ClientSub {
 	subToSports := make(map[commonDomain.SportType]float32, 0)
 	for _, sportType := range msg.Sports {
 		subToSports[sportType] = 1.0
@@ -140,12 +175,38 @@ func (s *Server) initClientSub(clientId int, msg *ClientSubMsg) *ClientSub {
 		Task:   nil,
 	}
 	s.mu.Lock()
-	s.clientSubs[clientId] = sub
+	s.clientSubs[msg.ClientId] = sub
 	s.mu.Unlock()
 	return sub
 }
 
-func (s *Server) calcSportsLine(lines []commonDomain.SportLine, isNeedDelta bool, clientId int) []*pb.Sport {
+func (s *Server) popSubMsgQueue() {
+	s.mu.Lock()
+	if len(s.clientSubMsgQueue) > 0 {
+		s.clientSubMsgQueue = s.clientSubMsgQueue[1:]
+	}
+	s.mu.Unlock()
+}
+
+func (s *Server) updateSportLineFn(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer, subMsg *ClientSubMsg) func(bool) {
+	return func(isNeedDelta bool) {
+		s.mu.Lock()
+		sportLines, err := s.sportRepo.GetSportLines(subMsg.Sports)
+		if err != nil {
+			s.mu.Unlock()
+			log.Println(err)
+			return
+		}
+		s.mu.Unlock()
+		sportsResponse := s.calculateSportsLine(sportLines, isNeedDelta, subMsg.ClientId)
+		response := pb.SubscribeResponse{Sports: sportsResponse}
+		if err = stream.Send(&response); err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func (s *Server) calculateSportsLine(lines []commonDomain.SportLine, isNeedDelta bool, clientId int) []*pb.Sport {
 	var sportsResponse []*pb.Sport
 
 	for _, line := range lines {
@@ -165,72 +226,6 @@ func (s *Server) calcSportsLine(lines []commonDomain.SportLine, isNeedDelta bool
 		sportsResponse = append(sportsResponse, resp)
 	}
 	return sportsResponse
-}
-
-func (s *Server) popSubMsgQueue() {
-	s.mu.Lock()
-	if len(s.clientSubMsgQueue) > 0 {
-		s.clientSubMsgQueue = s.clientSubMsgQueue[1:]
-	}
-	s.mu.Unlock()
-}
-
-func (s *Server) unsubscribeClient(id int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	sub, ok := s.clientSubs[id]
-	if !ok {
-		return
-	}
-	if sub.Task == nil {
-		return
-	}
-	sub.Task.Stop()
-}
-
-func (s *Server) sendResponse(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer, subMsg *ClientSubMsg) {
-	clientId := subMsg.ClientId
-	isNeedDelta := false
-	updateSportLineFn := func() {
-		s.mu.Lock()
-		sportLines, err := s.sportRepo.GetSportLines(subMsg.Sports)
-		if err != nil {
-			s.mu.Unlock()
-			log.Println(err)
-		} else {
-			s.mu.Unlock()
-			sportsResponse := s.calcSportsLine(sportLines, isNeedDelta, clientId)
-			response := pb.SubscribeResponse{Sports: sportsResponse}
-			if err = stream.Send(&response); err != nil {
-				log.Println(err)
-			}
-		}
-	}
-
-	sports := subMsg.Sports
-	s.mu.Lock()
-	sub, isExistSubTask := s.clientSubs[subMsg.ClientId]
-	s.mu.Unlock()
-	if !isExistSubTask {
-		fmt.Println("first sub")
-		clientSub := s.initClientSub(clientId, subMsg)
-		updateSportLineFn()
-		isNeedDelta = true
-		clientSub.Task = times.TickerHandle(subMsg.UpdateIntervalSecond, updateSportLineFn)
-		s.popSubMsgQueue()
-	} else {
-		isSubChanged := s.isSubChanged(clientId, sports)
-		if isSubChanged {
-			fmt.Println("change sub")
-			sub.Task.Stop()
-
-			clientSub := s.initClientSub(clientId, subMsg)
-			updateSportLineFn()
-			isNeedDelta = true
-			clientSub.Task = times.TickerHandle(subMsg.UpdateIntervalSecond, updateSportLineFn)
-			s.popSubMsgQueue()
-		}
-	}
 }
 
 func NewServer(sportRepo domain.SportRepo) *Server {
