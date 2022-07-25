@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	appErr "github.com/col3name/lines/pkg/common/application/errors"
 	"github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/common/infrastructure"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"strings"
 )
@@ -31,7 +34,7 @@ func NewSportLineRepository(conn *pgxpool.Pool) *SportRepoImpl {
 func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]domain.SportLine, error) {
 	countSportTypes := len(sportTypes)
 	if countSportTypes < 1 {
-		return nil, errors.New("not enough sport types")
+		return nil, appErr.ErrInvalidArgument
 	}
 	var sql string
 	getSqlSelectSportType := func(i int) string {
@@ -56,7 +59,7 @@ func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]domain.S
 		if contains {
 			return nil, ErrTableNotExist
 		}
-		return nil, err
+		return nil, infrastructure.InternalError(err)
 	}
 	if rows.Err() != nil {
 		return nil, err
@@ -68,7 +71,7 @@ func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]domain.S
 	for rows.Next() {
 		err = rows.Scan(&sport.Score, &sport.Type)
 		if err != nil {
-			return sports, err
+			return sports, infrastructure.InternalError(err)
 		}
 		sports = append(sports, sport)
 	}
@@ -82,6 +85,13 @@ func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]domain.S
 // );
 func (r *SportRepoImpl) Store(model *domain.SportLine) error {
 	sql := "UPDATE sport_lines SET score = $1 WHERE sport_type = $2;"
-	_, err := r.conn.Exec(context.Background(), sql, model.Score, model.Type)
-	return err
+
+	cancelFunc, err := WithTx(r.conn, func(tx pgx.Tx) error {
+		_, err := tx.Exec(context.Background(), sql, model.Score, model.Type)
+		return err
+	})
+	if cancelFunc != nil {
+		defer cancelFunc()
+	}
+	return infrastructure.InternalError(err)
 }

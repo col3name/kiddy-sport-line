@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "kiddy-line-processor/infrastructure/grpc/proto";
+option go_package = "kiddy-line-processor/infrastructure/transport/grpc/proto";
 
 package proto;
 

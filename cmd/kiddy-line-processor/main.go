@@ -11,6 +11,7 @@ import (
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres"
 	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -58,7 +59,13 @@ func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn *pgxpool.Po
 					   ('4b9d52e2-1473-4cdb-bba8-c1c1cac933f5', 'football', 1.0);
 				END ;`
 
-		_, err = conn.Exec(context.Background(), createSportLinesSql)
+		cancelFunc, err := postgres.WithTx(conn, func(tx pgx.Tx) error {
+			_, err = tx.Exec(context.Background(), createSportLinesSql)
+			return err
+		})
+		if cancelFunc != nil {
+			defer cancelFunc()
+		}
 		if err != nil {
 			log.Fatal(err)
 		}

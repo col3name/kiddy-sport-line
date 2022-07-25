@@ -37,6 +37,7 @@ func (s *SportLineServiceImpl) IsChanged(exist bool, oldValue map[commonDomain.S
 
 	return isSubChanged
 }
+
 func (s *SportLineServiceImpl) Calculate(sports []commonDomain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.Sport, error) {
 	sportLines, err := s.sportRepo.GetSportLines(sports)
 	if err != nil {
