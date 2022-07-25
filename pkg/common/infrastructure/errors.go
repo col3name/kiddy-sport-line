@@ -11,3 +11,10 @@ func InternalError(err error) error {
 	}
 	return errors.ErrInternal
 }
+
+func ExternalError(err error) error {
+	if err != nil {
+		log.Error(err)
+	}
+	return errors.ErrExternal
+}

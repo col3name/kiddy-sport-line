@@ -2,12 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/adapter"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres"
 	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
@@ -15,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -30,12 +27,12 @@ func main() {
 	sportLineRepo := postgres.NewSportLineRepository(conn)
 	performDbMigrationIfNeeded(sportLineRepo, conn)
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go runHttpServer(&wg, conf.HttpUrl)
-	go runGrpcServer(&wg, conf.GrpcUrl, sportLineRepo)
-	go runSpotLineUpdateWorkers(sportLineRepo, conf.LinesProviderUrl, conf.UpdatePeriod)
-	wg.Wait()
+	s := &service{
+		linesProviderAdapter: adapter.NewLinesProviderAdapter(conf.LinesProviderUrl),
+		conf:                 conf,
+		sportLineRepo:        sportLineRepo,
+	}
+	s.Run()
 }
 
 func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn *pgxpool.Pool) {
@@ -133,79 +130,54 @@ func setupDbConnection(dbUrl string) *pgxpool.Pool {
 	return db
 }
 
-func runHttpServer(wg *sync.WaitGroup, serverUrl string) {
+type service struct {
+	linesProviderAdapter adapter.LinesProviderAdapter
+	conf                 *config
+	sportLineRepo        *postgres.SportRepoImpl
+}
+
+func (s *service) runHttpServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	http.HandleFunc("/ready", netHttp.ReadyCheckHandler)
 
-	err := http.ListenAndServe(serverUrl, nil)
+	err := http.ListenAndServe(s.conf.HttpUrl, nil)
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 }
 
-func runGrpcServer(wg *sync.WaitGroup, serveUrl string, repo domain.SportRepo) {
+func (s *service) runGrpcServer(wg *sync.WaitGroup) {
 	defer wg.Done()
-	lis, err := net.Listen("tcp", serveUrl)
+	lis, err := net.Listen("tcp", s.conf.GrpcUrl)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	s := grpc.NewServer()
-	server := grpcServer.NewServer(repo)
-	pb.RegisterKiddyLineProcessorServer(s, server)
+	grpcSrv := grpc.NewServer()
+	server := grpcServer.NewServer(s.sportLineRepo)
+	pb.RegisterKiddyLineProcessorServer(grpcSrv, server)
 	log.Printf("server listening at %v", lis.Addr())
-	if err = s.Serve(lis); err != nil {
+	if err = grpcSrv.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
-func runSpotLineUpdateWorkers(sportLineRepo domain.SportRepo, url string, updatePeriod int) {
+func (s *service) runSpotLineUpdateWorkers() {
 	for _, sportType := range commonDomain.SupportSports {
-		go pullLineWorker(sportLineRepo, url, sportType, updatePeriod)
+		go s.updateSportLineWorker(sportType)
 	}
 }
 
-type BaseSport struct {
-}
-
-type BaseballResp struct {
-	BaseSport
-	Lines struct {
-		Score string `json:"BASEBALL"`
-	} `json:"lines"`
-}
-
-type FootballResp struct {
-	BaseSport
-	Lines struct {
-		Score string `json:"FOOTBALL"`
-	} `json:"lines"`
-}
-
-type SoccerResp struct {
-	BaseSport
-	Lines struct {
-		Score string `json:"SOCCER"`
-	} `json:"lines"`
-}
-
-func pullLineWorker(sportLineRepo domain.SportRepo, linesProviderUrl string, sportType commonDomain.SportType, period int) {
+func (s *service) updateSportLineWorker(sportType commonDomain.SportType) {
 	for {
-		url := fmt.Sprintf("%s/api/v1/lines/%s", linesProviderUrl, sportType)
-		resp, err := http.Get(url)
-		sleepDuration := time.Duration(period) * time.Second
-		if err != nil {
-			log.Error("failed get", sportType, "data", err)
-			time.Sleep(sleepDuration)
-			continue
-		}
-		sport, err := parseResp(resp, sportType)
+		sleepDuration := time.Duration(s.conf.UpdatePeriod) * time.Second
+		sportLine, err := s.linesProviderAdapter.GetLines(sportType)
 		if err != nil {
 			log.Error(err)
 			time.Sleep(sleepDuration)
 			continue
 		}
-		err = sportLineRepo.Store(sport)
+		err = s.sportLineRepo.Store(sportLine)
 		if err != nil {
 			log.Error(err)
 		}
@@ -213,62 +185,11 @@ func pullLineWorker(sportLineRepo domain.SportRepo, linesProviderUrl string, spo
 	}
 }
 
-func failedGetSportError(sportType commonDomain.SportType, err error) error {
-	text := "failed get " + string(sportType) + "data"
-	if err != nil {
-		text += err.Error()
-	}
-	return errors.New(text)
-}
-
-func parseResp(resp *http.Response, sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
-	if resp.StatusCode != http.StatusOK {
-		return nil, failedGetSportError(sportType, nil)
-	}
-	bytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Error(err)
-		return nil, failedGetSportError(sportType, err)
-	}
-
-	defer resp.Body.Close()
-
-	return parseGetLinesResponse(bytes, sportType)
-}
-
-func parseGetLinesResponse(bytes []byte, sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
-	var sport commonDomain.SportLine
-	var score string
-	var err error
-	switch sportType {
-	case commonDomain.Baseball:
-		var model BaseballResp
-		err = json.Unmarshal(bytes, &model)
-		if err != nil {
-			return nil, err
-		}
-		sport.Type = commonDomain.Baseball
-		score = model.Lines.Score
-	case commonDomain.Soccer:
-		var model SoccerResp
-		err = json.Unmarshal(bytes, &model)
-		if err != nil {
-			return nil, err
-		}
-		sport.Type = commonDomain.Soccer
-		score = model.Lines.Score
-	case commonDomain.Football:
-		var model FootballResp
-		err = json.Unmarshal(bytes, &model)
-		if err != nil {
-			return nil, err
-		}
-		sport.Type = commonDomain.Football
-		score = model.Lines.Score
-	}
-
-	if err = sport.SetScore(score); err != nil {
-		return nil, err
-	}
-	return &sport, nil
+func (s *service) Run() {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go s.runHttpServer(&wg)
+	go s.runGrpcServer(&wg)
+	go s.runSpotLineUpdateWorkers()
+	wg.Wait()
 }

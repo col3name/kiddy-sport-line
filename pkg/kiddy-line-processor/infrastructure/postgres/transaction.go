@@ -16,7 +16,7 @@ func WithTx(conn *pgxpool.Pool, job func(pgx.Tx) error) (context.CancelFunc, err
 		return cancel, infrastructure.InternalError(err)
 	}
 	err = job(tx)
-	if err != nil {
+	if err == nil {
 		err2 := tx.Commit(timeout)
 		if err2 != nil {
 			log.Error(err2)

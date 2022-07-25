@@ -93,5 +93,8 @@ func (r *SportRepoImpl) Store(model *domain.SportLine) error {
 	if cancelFunc != nil {
 		defer cancelFunc()
 	}
-	return infrastructure.InternalError(err)
+	if err != nil {
+		return infrastructure.InternalError(err)
+	}
+	return nil
 }
