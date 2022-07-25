@@ -8,9 +8,9 @@ import (
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
-	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/grpc"
-	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/grpc/proto"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres"
+	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc"
+	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	"github.com/jackc/pgx/v4/pgxpool"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -25,15 +25,44 @@ import (
 
 func main() {
 	conf := setupConfig()
-	// TODO make migration
-	db := setupDb(conf.DbUrl)
-	sportLineRepo := postgres.NewSportLineRepository(db)
+	conn := setupDbConnection(conf.DbUrl)
+	sportLineRepo := postgres.NewSportLineRepository(conn)
+	performDbMigrationIfNeeded(sportLineRepo, conn)
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go runHttpServer(&wg, conf.HttpUrl)
 	go runGrpcServer(&wg, conf.GrpcUrl, sportLineRepo)
 	go runSpotLineUpdateWorkers(sportLineRepo, conf.LinesProviderUrl, conf.UpdatePeriod)
 	wg.Wait()
+}
+
+func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn *pgxpool.Pool) {
+	_, err := sportLineRepo.GetSportLines([]commonDomain.SportType{commonDomain.Baseball})
+	if err != nil {
+		if err != postgres.ErrTableNotExist {
+			log.Fatal(err)
+		}
+
+		createSportLinesSql := `BEGIN TRANSACTION;
+				CREATE TABLE sport_lines
+				(
+					id         UUID PRIMARY KEY UNIQUE NOT NULL,
+					sport_type VARCHAR(255)            NOT NULL,
+					score      REAL                     NOT NULL
+				);
+				
+				INSERT INTO sport_lines (id, sport_type, score)
+				VALUES ('ce267749-dec9-4d39-ad81-8b4cd8c381d2', 'baseball', 1.0),
+					   ('ba9babe8-06d4-450e-8e9a-66b7512b5bd2', 'soccer', 1.0),
+					   ('4b9d52e2-1473-4cdb-bba8-c1c1cac933f5', 'football', 1.0);
+				END ;`
+
+		_, err = conn.Exec(context.Background(), createSportLinesSql)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 type config struct {
@@ -85,7 +114,7 @@ func setupConfig() *config {
 	}
 }
 
-func setupDb(dbUrl string) *pgxpool.Pool {
+func setupDbConnection(dbUrl string) *pgxpool.Pool {
 	poolConfig, err := pgxpool.ParseConfig(dbUrl)
 	if err != nil {
 		log.Fatal("Unable to parse DATABASE_URL", "error", err)

@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/grpc/proto"
+	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

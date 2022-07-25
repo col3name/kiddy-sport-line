@@ -4,12 +4,12 @@
 ![example workflow](https://github.com/col3name/kiddy-sport-line/actions/workflows/prod.yml/badge.svg)
 
 # TODO
-- [ ] migration
+- [x] migration
 - [x] github actions ci
 - [ ] logging level
 - [ ] unit tests
 - [ ] performance test
-- [ ] refactor
+- [x] refactor
 # Run
 Run docker compose
 `make start`

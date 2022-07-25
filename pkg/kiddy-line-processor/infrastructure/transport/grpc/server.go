@@ -4,7 +4,7 @@ import (
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
-	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/grpc/proto"
+	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"math/rand"

@@ -2,7 +2,7 @@ package grpc
 
 import (
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
-	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/grpc/proto"
+	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 )
 
 type ResponseSenderGrpc struct {

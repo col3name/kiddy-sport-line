@@ -6,6 +6,13 @@ import (
 	"fmt"
 	"github.com/col3name/lines/pkg/common/domain"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"strings"
+)
+
+const TableNotExistMessage = " does not exist (SQLSTATE 42P01)"
+
+var (
+	ErrTableNotExist = errors.New("table does not exist")
 )
 
 type SportRepoImpl struct {
@@ -44,6 +51,11 @@ func (r *SportRepoImpl) GetSportLines(sportTypes []domain.SportType) ([]domain.S
 
 	rows, err := r.conn.Query(context.Background(), sql, data...)
 	if err != nil {
+		s := err.Error()
+		contains := strings.Contains(s, TableNotExistMessage)
+		if contains {
+			return nil, ErrTableNotExist
+		}
 		return nil, err
 	}
 	if rows.Err() != nil {
