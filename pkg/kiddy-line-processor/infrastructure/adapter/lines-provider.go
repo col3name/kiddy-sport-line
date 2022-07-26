@@ -6,6 +6,7 @@ import (
 	"fmt"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure"
+	"github.com/col3name/lines/pkg/common/infrastructure/transport"
 	"io/ioutil"
 	"net/http"
 )
@@ -35,21 +36,21 @@ type SoccerResp struct {
 }
 
 type LinesProviderAdapter interface {
-	GetLines(sportType commonDomain.SportType) (*commonDomain.SportLine, error)
+	GetLineBySport(sportType commonDomain.SportType) (*commonDomain.SportLine, error)
 }
 
 type linesProviderAdapter struct {
 	linesProviderUrl string
+	httpClient       transport.HTTPClient
 }
 
 func NewLinesProviderAdapter(linesProviderUrl string) *linesProviderAdapter {
 	return &linesProviderAdapter{linesProviderUrl: linesProviderUrl}
 }
 
-func (s linesProviderAdapter) GetLines(sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
+func (s linesProviderAdapter) GetLineBySport(sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
 	url := fmt.Sprintf("%s/api/v1/lines/%s", s.linesProviderUrl, sportType)
-	fmt.Println(url)
-	resp, err := http.Get(url)
+	resp, err := transport.Get(url)
 	if err != nil {
 		return nil, infrastructure.ExternalError(err)
 	}
@@ -69,11 +70,11 @@ func (s *linesProviderAdapter) parseResp(resp *http.Response, sportType commonDo
 
 	defer resp.Body.Close()
 
-	response, err := s.parseGetLinesResponse(bytes, sportType)
+	sportLine, err := s.parseGetLinesResponse(bytes, sportType)
 	if err != nil {
 		return nil, infrastructure.InternalError(err)
 	}
-	return response, nil
+	return sportLine, nil
 }
 
 func (s *linesProviderAdapter) failedGetSportError(sportType commonDomain.SportType, err error) error {

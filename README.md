@@ -8,9 +8,10 @@
 - [x] github actions ci
 - [ ] logging level
 - [x] kiddy application unit tests
-- [ ] unit test for adapter
+- [x] unit test for adapter
 - [ ] performance test
 - [x] refactor
+
 # Run
 Run docker compose
 `make start`

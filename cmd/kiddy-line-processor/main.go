@@ -174,7 +174,7 @@ func (s *service) runSpotLineUpdateWorkers() {
 func (s *service) updateSportLineWorker(sportType commonDomain.SportType) {
 	for {
 		sleepDuration := time.Duration(s.conf.UpdatePeriod) * time.Second
-		sportLine, err := s.linesProviderAdapter.GetLines(sportType)
+		sportLine, err := s.linesProviderAdapter.GetLineBySport(sportType)
 		if err != nil {
 			log.Error(err)
 			time.Sleep(sleepDuration)
