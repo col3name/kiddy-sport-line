@@ -41,7 +41,6 @@ type LinesProviderAdapter interface {
 
 type linesProviderAdapter struct {
 	linesProviderUrl string
-	httpClient       transport.HTTPClient
 }
 
 func NewLinesProviderAdapter(linesProviderUrl string) *linesProviderAdapter {

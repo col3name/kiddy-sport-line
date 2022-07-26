@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/col3name/lines/pkg/common/application/errors"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
+	commonPostgres "github.com/col3name/lines/pkg/common/infrastructure/postgres"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
@@ -37,8 +38,8 @@ func main() {
 	s.Run()
 }
 
-func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn *pgxpool.Pool) {
-	_, err := sportLineRepo.GetSportLines([]commonDomain.SportType{commonDomain.Baseball})
+func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostgres.PgxPoolIface) {
+	_, err := sportLineRepo.GetLinesBySportTypes([]commonDomain.SportType{commonDomain.Baseball})
 	if err != nil {
 		if err != errors.ErrTableNotExist {
 			log.Fatal(err)
@@ -120,7 +121,7 @@ func setupConfig() *config {
 	}
 }
 
-func setupDbConnection(dbUrl string) *pgxpool.Pool {
+func setupDbConnection(dbUrl string) commonPostgres.PgxPoolIface {
 	poolConfig, err := pgxpool.ParseConfig(dbUrl)
 	if err != nil {
 		log.Fatal("Unable to parse DATABASE_URL", "error", err)

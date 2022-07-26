@@ -4,12 +4,6 @@ lint:
 proto:
 	protoc --go_out=pkg --go-grpc_out=pkg api/proto/kiddy-line-processor.proto
 
-run-loc:
-	go build -o linesProvider.exe cmd/lines-provider/main.go && linesProvider.exe
-
-run-loc2:
-	go build -o kiddyLinesProvider.exe cmd/kiddy-line-processor/main.go && kiddyLinesProvider.exe
-
 tests:
 	go test ./...
 

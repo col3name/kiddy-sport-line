@@ -4,7 +4,9 @@ go 1.17
 
 require (
 	github.com/gorilla/mux v1.8.0
+	github.com/jackc/pgconn v1.12.1
 	github.com/jackc/pgx/v4 v4.16.1
+	github.com/pashagolub/pgxmock v1.6.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.7.0
 	google.golang.org/grpc v1.48.0
@@ -16,7 +18,6 @@ require (
 	github.com/gofrs/uuid v4.2.0+incompatible // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
-	github.com/jackc/pgconn v1.12.1 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgproto3/v2 v2.3.0 // indirect

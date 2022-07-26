@@ -25,7 +25,7 @@ func (s *sportLineServiceImpl) Calculate(sports []commonDomain.SportType, isNeed
 	if subs == nil {
 		return nil, errors.ErrInvalidArgument
 	}
-	sportLines, err := s.sportRepo.GetSportLines(sports)
+	sportLines, err := s.sportRepo.GetLinesBySportTypes(sports)
 	if err != nil {
 		return nil, err
 	}

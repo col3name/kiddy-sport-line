@@ -12,7 +12,7 @@ type mockDB struct {
 	FakeStore         func(model *commonDomain.SportLine) error
 }
 
-func (m *mockDB) GetSportLines(sportTypes []commonDomain.SportType) ([]*commonDomain.SportLine, error) {
+func (m *mockDB) GetLinesBySportTypes(sportTypes []commonDomain.SportType) ([]*commonDomain.SportLine, error) {
 	if m.FakeGetSportLines == nil {
 		return []*commonDomain.SportLine{}, nil
 	}

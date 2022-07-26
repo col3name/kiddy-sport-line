@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"strconv"
+	"strings"
 )
 
 type SportType string
@@ -15,6 +16,7 @@ const (
 
 var (
 	ErrUnsupportedSportType = errors.New("unsupported sport type")
+	ErrInvalidScore         = errors.New("invalid score")
 )
 
 func (s SportType) String() string {
@@ -22,13 +24,13 @@ func (s SportType) String() string {
 }
 
 func NewSportType(sport string) (SportType, error) {
-	switch sport {
-	case Football.String():
-		return Football, nil
+	switch strings.ToLower(sport) {
 	case Baseball.String():
 		return Baseball, nil
 	case Soccer.String():
 		return Soccer, nil
+	case Football.String():
+		return Football, nil
 	default:
 		return "", ErrUnsupportedSportType
 	}
@@ -39,7 +41,6 @@ var SupportSports = map[string]SportType{
 	"football": Football,
 	"soccer":   Soccer,
 }
-var ErrInvalidScore = errors.New("invalid score")
 
 type SportLine struct {
 	Type  SportType

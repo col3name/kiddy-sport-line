@@ -8,5 +8,5 @@ var (
 	ErrInternal        = errors.New("internalServerError")
 	ErrExternal        = errors.New("externalServerError")
 	ErrInvalidArgument = errors.New("invalidArgumentError")
-	ErrTableNotExist   = errors.New("table does not exist")
+	ErrTableNotExist   = errors.New("notExistTableError")
 )
