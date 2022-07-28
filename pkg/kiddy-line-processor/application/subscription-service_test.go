@@ -14,7 +14,20 @@ type expectedPushMessage struct {
 	msg       *SubscriptionMessageDTO
 }
 
-func EqualSubscriptionMessageDTO(t *testing.T, lhs, rhs *SubscriptionMessageDTO) {
+func getFieldValue(interf interface{}, fieldName string) *reflect.Value {
+	val := reflect.ValueOf(interf).Elem()
+	for i := 0; i < val.NumField(); i++ {
+		typeField := val.Type().Field(i)
+
+		if typeField.Name == fieldName {
+			valueField := val.Field(i)
+			return &valueField
+		}
+	}
+	return nil
+}
+
+func equalSubscriptionMessageDTO(t *testing.T, lhs, rhs *SubscriptionMessageDTO) {
 	assert.Equal(t, lhs.UpdateIntervalSecond, rhs.UpdateIntervalSecond)
 	assert.Equal(t, lhs.ClientId, rhs.ClientId)
 	assert.Equal(t, len(lhs.Sports), len(rhs.Sports))
@@ -101,7 +114,7 @@ func TestPushMessage(t *testing.T) {
 			if test.expected.queueSize > 0 {
 				peek := manager.messageQueue.Peek()
 				msg := test.expected.msg
-				EqualSubscriptionMessageDTO(t, msg, peek)
+				equalSubscriptionMessageDTO(t, msg, peek)
 			}
 		})
 	}
@@ -634,7 +647,7 @@ func TestSubscribe(t *testing.T) {
 					expectedQueue.Pop()
 					for i, expectedDto := range expectedQueue.clientSubMsgQueue {
 						dto := queue.clientSubMsgQueue[i]
-						EqualSubscriptionMessageDTO(t, expectedDto, dto)
+						equalSubscriptionMessageDTO(t, expectedDto, dto)
 					}
 				}
 			}
@@ -659,20 +672,4 @@ func TestSubscribe(t *testing.T) {
 			manager.Unsubscribe(input.clientId)
 		})
 	}
-}
-
-func getFieldValue(interf interface{}, fieldName string) *reflect.Value {
-	val := reflect.ValueOf(interf).Elem()
-	for i := 0; i < val.NumField(); i++ {
-		typeField := val.Type().Field(i)
-
-		if typeField.Name == fieldName {
-			valueField := val.Field(i)
-			return &valueField
-		}
-	}
-	return nil
-}
-func TestName(t *testing.T) {
-
 }

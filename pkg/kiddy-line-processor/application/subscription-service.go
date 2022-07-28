@@ -1,7 +1,6 @@
 package application
 
 import (
-	"fmt"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/util/times"
 	log "github.com/sirupsen/logrus"
@@ -77,12 +76,10 @@ func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender respons
 	sub, isExistSubTask := s.subscriptions[clientId]
 	s.mu.Unlock()
 	if !isExistSubTask {
-		fmt.Println("first sub")
 		s.addNotifySubscriberPeriodically(responseSender, subMsg)
 		return true
 	}
 	if s.isSubChanged(clientId, sports) {
-		fmt.Println("change sub")
 		sub.Task.Stop()
 		s.addNotifySubscriberPeriodically(responseSender, subMsg)
 		return true
@@ -147,10 +144,8 @@ func (s *subscriptionServiceImpl) initClientSubscription(msg *SubscriptionMessag
 }
 
 func (s *sportLineServiceImpl) calculateLineOfSports(lines []*commonDomain.SportLine, isNeedDelta bool, subs *ClientSubscription) []*commonDomain.SportLine {
-
 	for i, line := range lines {
 		s.calculateLine(line, isNeedDelta, subs)
-		fmt.Println(line.Type, line.Score)
 		lines[i] = line
 	}
 

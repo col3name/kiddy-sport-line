@@ -21,9 +21,6 @@ func NewSportLineRepository(conn postgres.PgxPoolIface) *SportRepoImpl {
 	return u
 }
 
-// SELECT score,sport_type FROM sport_lines WHERE sport_type = 'baseball'
-// UNION ALL
-// SELECT score, sport_type FROM sport_lines WHERE sport_type = 'football'`
 func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*domain.SportLine, error) {
 	countSportTypes := len(sportTypes)
 	if countSportTypes < 1 {
@@ -44,13 +41,10 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 		}
 	}
 	sql += ";"
-	fmt.Println(sql)
 
 	rows, err := r.conn.Query(context.Background(), sql, data...)
 	if err != nil {
-		s := err.Error()
-		fmt.Println(s)
-		contains := strings.Contains(s, appErr.TableNotExistMessage)
+		contains := strings.Contains(err.Error(), appErr.TableNotExistMessage)
 		if contains {
 			return nil, appErr.ErrTableNotExist
 		}
