@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
+
 	"github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
 	"github.com/gorilla/mux"
-	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"net/http"
 	"os"
@@ -14,15 +16,15 @@ import (
 )
 
 func main() {
-	log.SetFormatter(&log.JSONFormatter{})
+	logger := logrusLogger.New()
 
 	var err error
-	getenv := os.Getenv("PORT")
+	portStr := os.Getenv("PORT")
 	port := 8000
-	if len(getenv) > 0 {
-		port, err = strconv.Atoi(getenv)
+	if len(portStr) > 0 {
+		port, err = strconv.Atoi(portStr)
 		if err != nil {
-			log.Fatalf("Invalid port %s", getenv)
+			logger.Fatalf("Invalid port %s", portStr)
 		}
 	}
 	r := mux.NewRouter()
@@ -30,8 +32,8 @@ func main() {
 	r.HandleFunc("/ready", netHttp.ReadyCheckHandler).Methods(http.MethodGet)
 	apiV1Route.HandleFunc("/lines/{sport}", getLineSport)
 	serverUrl := ":" + strconv.Itoa(port)
-	log.Info("listen and serve at", serverUrl)
-	_ = http.ListenAndServe(serverUrl, logMiddleware(r))
+	logger.Info("listen and serve at", serverUrl)
+	_ = http.ListenAndServe(serverUrl, logMiddleware(r, logger))
 }
 
 func getLineSport(w http.ResponseWriter, req *http.Request) {
@@ -53,9 +55,9 @@ func randFloat(min, max float64) float64 {
 	return min + rand.Float64()*(max-min)
 }
 
-func logMiddleware(h http.Handler) http.Handler {
+func logMiddleware(h http.Handler, logger loggerInterface.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.WithFields(log.Fields{
+		logger.With(loggerInterface.Fields{
 			"method":     r.Method,
 			"url":        r.URL,
 			"remoteAddr": r.RemoteAddr,

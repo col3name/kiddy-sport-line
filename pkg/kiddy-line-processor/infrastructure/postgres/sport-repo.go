@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	appErr "github.com/col3name/lines/pkg/common/application/errors"
+	"github.com/col3name/lines/pkg/common/application/logger"
 	"github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure"
 	"github.com/col3name/lines/pkg/common/infrastructure/postgres"
@@ -12,13 +13,12 @@ import (
 )
 
 type SportRepoImpl struct {
-	conn postgres.PgxPoolIface
+	conn   postgres.PgxPoolIface
+	logger logger.Logger
 }
 
-func NewSportLineRepository(conn postgres.PgxPoolIface) *SportRepoImpl {
-	u := new(SportRepoImpl)
-	u.conn = conn
-	return u
+func NewSportLineRepository(conn postgres.PgxPoolIface, logger logger.Logger) *SportRepoImpl {
+	return &SportRepoImpl{conn: conn, logger: logger}
 }
 
 func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*domain.SportLine, error) {
@@ -48,7 +48,7 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 		if contains {
 			return nil, appErr.ErrTableNotExist
 		}
-		return nil, infrastructure.InternalError(err)
+		return nil, infrastructure.InternalError(r.logger, err)
 	}
 	if rows.Err() != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 	for rows.Next() {
 		err = rows.Scan(&sport.Score, &sport.Type)
 		if err != nil {
-			return sports, infrastructure.InternalError(err)
+			return sports, infrastructure.InternalError(r.logger, err)
 		}
 		sports = append(sports, &sport)
 	}
@@ -70,15 +70,16 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 func (r *SportRepoImpl) Store(model *domain.SportLine) error {
 	sql := "UPDATE sport_lines SET score = $1 WHERE sport_type = $2;"
 
-	cancelFunc, err := WithTx(r.conn, func(tx pgx.Tx) error {
+	job := func(tx pgx.Tx) error {
 		_, err := tx.Exec(context.Background(), sql, model.Score, model.Type)
 		return err
-	})
+	}
+	cancelFunc, err := WithTx(r.conn, job, r.logger)
 	if cancelFunc != nil {
 		defer cancelFunc()
 	}
 	if err != nil {
-		return infrastructure.InternalError(err)
+		return infrastructure.InternalError(r.logger, err)
 	}
 	return nil
 }

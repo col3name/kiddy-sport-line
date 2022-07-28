@@ -3,6 +3,7 @@ package application
 import (
 	"errors"
 	"github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/fake"
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
@@ -14,8 +15,8 @@ type expectedPushMessage struct {
 	msg       *SubscriptionMessageDTO
 }
 
-func getFieldValue(interf interface{}, fieldName string) *reflect.Value {
-	val := reflect.ValueOf(interf).Elem()
+func getFieldValue(object interface{}, fieldName string) *reflect.Value {
+	val := reflect.ValueOf(object).Elem()
 	for i := 0; i < val.NumField(); i++ {
 		typeField := val.Type().Field(i)
 
@@ -105,10 +106,7 @@ func TestPushMessage(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			manager := NewSubscriptionManager(&MockLinesService{
-				FakeCalculate: nil,
-				FakeIsChanged: nil,
-			})
+			manager := NewSubscriptionManager(&MockLinesService{FakeCalculate: nil, FakeIsChanged: nil}, &fake.Logger{})
 			manager.PushMessage(test.input)
 			assert.Equal(t, test.expected.queueSize, manager.messageQueue.Size())
 			if test.expected.queueSize > 0 {
@@ -192,10 +190,7 @@ func TestUnsubscribeClient(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			manager := NewSubscriptionManager(&MockLinesService{
-				FakeCalculate: nil,
-				FakeIsChanged: nil,
-			})
+			manager := NewSubscriptionManager(&MockLinesService{FakeCalculate: nil, FakeIsChanged: nil}, &fake.Logger{})
 			input := test.input
 			expected := test.expected
 
@@ -621,7 +616,7 @@ func TestSubscribe(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			input := test.input
 			expected := test.expected
-			manager := NewSubscriptionManager(input.sportLineService)
+			manager := NewSubscriptionManager(input.sportLineService, &fake.Logger{})
 			if input.messageQueue != nil {
 				manager.messageQueue = input.messageQueue
 			}

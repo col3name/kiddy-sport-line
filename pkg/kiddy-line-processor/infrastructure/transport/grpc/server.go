@@ -1,10 +1,10 @@
 package grpc
 
 import (
+	"github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"math/rand"
 	"time"
@@ -25,11 +25,13 @@ func parseSportRequest(sports []string) []commonDomain.SportType {
 type Server struct {
 	pb.UnimplementedKiddyLineProcessorServer
 	subscriptionManager application.SubscriptionService
+	logger              logger.Logger
 }
 
-func NewServer(sportLineService application.SportLineService) *Server {
+func NewServer(sportLineService application.SportLineService, logger logger.Logger) *Server {
 	return &Server{
-		subscriptionManager: application.NewSubscriptionManager(sportLineService),
+		subscriptionManager: application.NewSubscriptionManager(sportLineService, logger),
+		logger:              logger,
 	}
 }
 
@@ -47,24 +49,24 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 	for {
 		in, err := stream.Recv()
 		if err == io.EOF {
-			log.Println(err)
+			s.logger.Println(err)
 			s.subscriptionManager.Unsubscribe(clientId)
 			errCh <- err
 		}
 		if err != nil {
-			log.Printf("Error in receiving message from client :: %v", err)
+			s.logger.Println("Error in receiving message from client :: ", err)
 			errCh <- err
 			s.subscriptionManager.Unsubscribe(clientId)
 			continue
 		}
 		if in.IntervalInSecond < 1 || len(in.Sports) == 0 {
-			log.Printf("Error in receiving message from client. interval must be positive number :: %v", err)
+			s.logger.Println("Error in receiving message from client. interval must be positive number :: ", err)
 			errCh <- err
 			continue
 		}
 		sportsList := parseSportRequest(in.Sports)
 		if len(sportsList) == 0 {
-			log.Println("Error in receiving message from client. :: ")
+			s.logger.Println("Error in receiving message from client. :: ")
 			errCh <- err
 			continue
 		}

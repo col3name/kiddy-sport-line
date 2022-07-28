@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	"io"
-	"log"
 	"os"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 )
 
 func main() {
+	logger := logrusLogger.New()
 	kiddyGrpcUrl := os.Getenv("KIDDY_LINES_PROCESSOR_GRPC_URL")
 	if len(kiddyGrpcUrl) == 0 {
 		kiddyGrpcUrl = "localhost:50051"
@@ -22,34 +24,35 @@ func main() {
 
 	conn, err := grpc.Dial(kiddyGrpcUrl, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		logger.Fatal("did not connect: ", err)
 	}
 	defer conn.Close()
 	client := pb.NewKiddyLineProcessorClient(conn)
 
-	handleGrpc(client)
+	handleGrpc(logger, client)
 }
 
-func handleGrpc(client pb.KiddyLineProcessorClient) {
+func handleGrpc(logger loggerInterface.Logger, client pb.KiddyLineProcessorClient) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 	stream, err := client.SubscribeOnSportsLines(ctx)
 	if err != nil {
-		log.Fatalf("client.RouteChat failed: %v", err)
+		logger.Fatal("client.RouteChat failed: ", err)
 	}
 
 	sports := []string{string(commonDomain.Soccer)}
 
-	handle := clientHandle{stream: stream}
+	handle := clientHandle{stream: stream, logger: logger}
 
 	go handle.subscribeForSport(sports)
 	go handle.receiveMessage()
-	waitc := make(chan struct{})
-	<-waitc
+	waitChan := make(chan struct{})
+	<-waitChan
 }
 
 type clientHandle struct {
 	stream pb.KiddyLineProcessor_SubscribeOnSportsLinesClient
+	logger loggerInterface.Logger
 }
 
 func (c *clientHandle) subscribeForSport(sports []string) {
@@ -83,15 +86,14 @@ func (c *clientHandle) receiveMessage() {
 	for {
 		recv, err := c.stream.Recv()
 		if err == io.EOF {
-			log.Println("done", err)
+			c.logger.Println("done", err)
 			break
 		} else if err != nil {
-			log.Fatalf("client.RouteChat failed: %v", err)
+			c.logger.Fatal("client.RouteChat failed: ", err)
 		}
 		for _, sport := range recv.Sports {
 			fmt.Println(sport.Type, sport.Line)
 		}
-		log.Println(recv.Sports)
 	}
 }
 
@@ -100,7 +102,7 @@ func (c *clientHandle) sendSubs(subscriptions []*pb.SubscribeRequest, sec int) {
 
 	for _, sub := range subscriptions {
 		if err := c.stream.Send(sub); err != nil {
-			log.Fatalf("client.RouteChat: stream.Send(%v) failed: %v", sub, err)
+			c.logger.Fatalf("client.RouteChat: stream.Send(%v) failed: %v", sub, err)
 		}
 	}
 }

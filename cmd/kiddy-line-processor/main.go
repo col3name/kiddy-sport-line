@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"github.com/col3name/lines/pkg/common/application/errors"
+	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	commonPostgres "github.com/col3name/lines/pkg/common/infrastructure/postgres"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
@@ -14,7 +16,6 @@ import (
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"net"
 	"net/http"
@@ -25,24 +26,29 @@ import (
 )
 
 func main() {
-	conf := setupConfig()
-	conn := setupDbConnection(conf.DbUrl)
-	sportLineRepo := postgres.NewSportLineRepository(conn)
-	performDbMigrationIfNeeded(sportLineRepo, conn)
+	logger := logrusLogger.New()
+	conf := setupConfig(logger)
+	conn := setupDbConnection(conf.DbUrl, logger)
+	sportLineRepo := postgres.NewSportLineRepository(conn, logger)
+	err := performDbMigrationIfNeeded(sportLineRepo, conn, logger)
+	if err != nil {
+		logger.Fatal(err)
+	}
 
 	s := &service{
-		linesProviderAdapter: adapter.NewLinesProviderAdapter(conf.LinesProviderUrl),
+		linesProviderAdapter: adapter.NewLinesProviderAdapter(conf.LinesProviderUrl, logger),
 		conf:                 conf,
 		sportLineRepo:        sportLineRepo,
+		logger:               logger,
 	}
-	s.Run()
+	s.run()
 }
 
-func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostgres.PgxPoolIface) {
+func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostgres.PgxPoolIface, logger loggerInterface.Logger) error {
 	_, err := sportLineRepo.GetLinesBySportTypes([]commonDomain.SportType{commonDomain.Baseball})
 	if err != nil {
 		if err != errors.ErrTableNotExist {
-			log.Fatal(err)
+			return err
 		}
 
 		createSportLinesSql := `BEGIN TRANSACTION;
@@ -62,14 +68,15 @@ func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostg
 		cancelFunc, err := postgres.WithTx(conn, func(tx pgx.Tx) error {
 			_, err = tx.Exec(context.Background(), createSportLinesSql)
 			return err
-		})
+		}, logger)
 		if cancelFunc != nil {
 			defer cancelFunc()
 		}
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
+	return nil
 }
 
 type config struct {
@@ -81,17 +88,17 @@ type config struct {
 	DbUrl            string
 }
 
-func setupConfig() *config {
+func setupConfig(logger loggerInterface.Logger) *config {
 	updatePeriod := 1
 	nStr := os.Getenv("UPDATE_INTERVAL")
 	if len(nStr) > 0 {
 		val, err := strconv.Atoi(nStr)
 		errPositive := "UPDATE_INTERVAL must be positive integer"
 		if err != nil {
-			log.Error(errPositive)
+			logger.Error(errPositive)
 		}
 		if val < 1 {
-			log.Error(errPositive)
+			logger.Error(errPositive)
 		}
 	}
 	linesProviderUrl := os.Getenv("LINES_PROVIDER_URL")
@@ -121,14 +128,14 @@ func setupConfig() *config {
 	}
 }
 
-func setupDbConnection(dbUrl string) commonPostgres.PgxPoolIface {
+func setupDbConnection(dbUrl string, logger loggerInterface.Logger) commonPostgres.PgxPoolIface {
 	poolConfig, err := pgxpool.ParseConfig(dbUrl)
 	if err != nil {
-		log.Fatal("Unable to parse DATABASE_URL", "error", err)
+		logger.Fatal("Unable to parse DATABASE_URL", "error", err)
 	}
 	db, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
 	if err != nil {
-		log.Fatal("Unable to create connection pool", "error", err)
+		logger.Fatal("Unable to create connection pool", "error", err)
 	}
 	return db
 }
@@ -137,6 +144,7 @@ type service struct {
 	linesProviderAdapter adapter.LinesProviderAdapter
 	conf                 *config
 	sportLineRepo        *postgres.SportRepoImpl
+	logger               loggerInterface.Logger
 }
 
 func (s *service) runHttpServer(wg *sync.WaitGroup) {
@@ -145,7 +153,7 @@ func (s *service) runHttpServer(wg *sync.WaitGroup) {
 
 	err := http.ListenAndServe(s.conf.HttpUrl, nil)
 	if err != nil {
-		log.Fatal(err)
+		s.logger.Fatal(err)
 		return
 	}
 }
@@ -154,15 +162,15 @@ func (s *service) runGrpcServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	lis, err := net.Listen("tcp", s.conf.GrpcUrl)
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		s.logger.Fatalf("failed to listen: %v", err)
 	}
 	grpcSrv := grpc.NewServer()
 	sportLineService := application.NewSportLineService(s.sportLineRepo)
-	server := grpcServer.NewServer(sportLineService)
+	server := grpcServer.NewServer(sportLineService, s.logger)
 	pb.RegisterKiddyLineProcessorServer(grpcSrv, server)
-	log.Printf("server listening at %v", lis.Addr())
+	s.logger.Info("server listening at", lis.Addr().String())
 	if err = grpcSrv.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		s.logger.Fatal("failed to serve: ", err)
 	}
 }
 
@@ -177,19 +185,19 @@ func (s *service) updateSportLineWorker(sportType commonDomain.SportType) {
 		sleepDuration := time.Duration(s.conf.UpdatePeriod) * time.Second
 		sportLine, err := s.linesProviderAdapter.GetLineBySport(sportType)
 		if err != nil {
-			log.Error(err)
+			s.logger.Error(err)
 			time.Sleep(sleepDuration)
 			continue
 		}
 		err = s.sportLineRepo.Store(sportLine)
 		if err != nil {
-			log.Error(err)
+			s.logger.Error(err)
 		}
 		time.Sleep(sleepDuration)
 	}
 }
 
-func (s *service) Run() {
+func (s *service) run() {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go s.runHttpServer(&wg)

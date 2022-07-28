@@ -1,9 +1,9 @@
 package application
 
 import (
+	"github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/util/times"
-	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
 )
@@ -24,14 +24,16 @@ type subscriptionServiceImpl struct {
 	messageQueue     *MessageQueue
 	sportLineService SportLineService
 	timesTicker      times.Ticker
+	logger           logger.Logger
 	mu               sync.Mutex
 }
 
-func NewSubscriptionManager(sportLineService SportLineService) *subscriptionServiceImpl {
+func NewSubscriptionManager(sportLineService SportLineService, logger logger.Logger) *subscriptionServiceImpl {
 	return &subscriptionServiceImpl{
 		subscriptions:    make(map[int]*ClientSubscription, 0),
 		messageQueue:     NewMessageQueue(),
 		sportLineService: sportLineService,
+		logger:           logger,
 		timesTicker:      times.NewTimeTicker(),
 	}
 }
@@ -105,11 +107,11 @@ func (s *subscriptionServiceImpl) updateSportLineFn(sender responseSender, subMs
 		s.mu.Unlock()
 		line, err := s.sportLineService.Calculate(subMsg.Sports, isNeedDelta, subscription)
 		if err != nil {
-			log.Println(err)
+			s.logger.Println(err)
 			return
 		}
 		if err = sender.Send(line); err != nil {
-			log.Println(err)
+			s.logger.Println(err)
 		}
 	}
 }

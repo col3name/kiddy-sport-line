@@ -2,19 +2,19 @@ package infrastructure
 
 import (
 	"github.com/col3name/lines/pkg/common/application/errors"
-	log "github.com/sirupsen/logrus"
+	"github.com/col3name/lines/pkg/common/application/logger"
 )
 
-func InternalError(err error) error {
+func InternalError(logger logger.Logger, err error) error {
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 	}
 	return errors.ErrInternal
 }
 
-func ExternalError(err error) error {
+func ExternalError(logger logger.Logger, err error) error {
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 	}
 	return errors.ErrExternal
 }

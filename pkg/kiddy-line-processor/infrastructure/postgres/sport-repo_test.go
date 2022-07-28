@@ -4,6 +4,7 @@ import (
 	errBase "errors"
 	"github.com/col3name/lines/pkg/common/application/errors"
 	"github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/fake"
 	"github.com/jackc/pgconn"
 	"github.com/pashagolub/pgxmock"
 	"github.com/stretchr/testify/assert"
@@ -131,7 +132,7 @@ func TestStore(t *testing.T) {
 			}
 			defer mock.Close()
 
-			repo := NewSportLineRepository(mock)
+			repo := NewSportLineRepository(mock, fake.Logger{})
 			expected := test.expected
 			expectedErr := expected.err
 			switch expected.status {
@@ -289,7 +290,7 @@ func TestGetSportLines(t *testing.T) {
 			}
 			defer mock.Close()
 
-			repo := NewSportLineRepository(mock)
+			repo := NewSportLineRepository(mock, fake.Logger{})
 
 			input := test.input
 			expected := test.expected

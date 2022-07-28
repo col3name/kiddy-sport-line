@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure"
 	"github.com/col3name/lines/pkg/common/infrastructure/transport"
@@ -41,17 +42,18 @@ type LinesProviderAdapter interface {
 
 type linesProviderAdapter struct {
 	linesProviderUrl string
+	logger           logger.Logger
 }
 
-func NewLinesProviderAdapter(linesProviderUrl string) *linesProviderAdapter {
-	return &linesProviderAdapter{linesProviderUrl: linesProviderUrl}
+func NewLinesProviderAdapter(linesProviderUrl string, logger logger.Logger) *linesProviderAdapter {
+	return &linesProviderAdapter{linesProviderUrl: linesProviderUrl, logger: logger}
 }
 
 func (s linesProviderAdapter) GetLineBySport(sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
 	url := fmt.Sprintf("%s/api/v1/lines/%s", s.linesProviderUrl, sportType)
 	resp, err := transport.Get(url)
 	if err != nil {
-		return nil, infrastructure.ExternalError(err)
+		return nil, infrastructure.ExternalError(s.logger, err)
 	}
 	return s.parseResp(resp, sportType)
 }
@@ -59,19 +61,19 @@ func (s linesProviderAdapter) GetLineBySport(sportType commonDomain.SportType) (
 func (s *linesProviderAdapter) parseResp(resp *http.Response, sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
 	if resp.StatusCode != http.StatusOK {
 		err := s.failedGetSportError(sportType, nil)
-		return nil, infrastructure.ExternalError(err)
+		return nil, infrastructure.ExternalError(s.logger, err)
 	}
 	bytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		err = s.failedGetSportError(sportType, err)
-		return nil, infrastructure.InternalError(err)
+		return nil, infrastructure.InternalError(s.logger, err)
 	}
 
 	defer resp.Body.Close()
 
 	sportLine, err := s.parseGetLinesResponse(bytes, sportType)
 	if err != nil {
-		return nil, infrastructure.InternalError(err)
+		return nil, infrastructure.InternalError(s.logger, err)
 	}
 	return sportLine, nil
 }
