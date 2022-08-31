@@ -32,6 +32,19 @@ type isChangeInput struct {
 	sports []commonDomain.SportType
 }
 
+func compareSportLines(t *testing.T, expectedSportLines []*commonDomain.SportLine, actualSportLines []*commonDomain.SportLine) {
+	if actualSportLines == nil {
+		assert.Equal(t, expectedSportLines, actualSportLines)
+		return
+	}
+	assert.Equal(t, len(expectedSportLines), len(actualSportLines))
+	for i, line := range actualSportLines {
+		expectedLine := expectedSportLines[i]
+		assert.Equal(t, expectedLine.Score, line.Score)
+		assert.Equal(t, expectedLine.Type, line.Type)
+	}
+}
+
 func TestIsChanged(t *testing.T) {
 	db := &mockDB{}
 	tests := []struct {
@@ -127,8 +140,8 @@ type CalculateInput struct {
 }
 
 type CalculateExpected struct {
-	err    error
-	result []*commonDomain.SportLine
+	err        error
+	sportLines []*commonDomain.SportLine
 }
 
 func TestCalculates(t *testing.T) {
@@ -151,8 +164,8 @@ func TestCalculates(t *testing.T) {
 				},
 			},
 			expected: &CalculateExpected{
-				err:    errors.ErrInvalidArgument,
-				result: nil,
+				err:        errors.ErrInvalidArgument,
+				sportLines: nil,
 			},
 		},
 		{
@@ -168,8 +181,8 @@ func TestCalculates(t *testing.T) {
 				},
 			},
 			expected: &CalculateExpected{
-				err:    errors.ErrTableNotExist,
-				result: nil,
+				err:        errors.ErrTableNotExist,
+				sportLines: nil,
 			},
 		},
 		{
@@ -185,8 +198,8 @@ func TestCalculates(t *testing.T) {
 				},
 			},
 			expected: &CalculateExpected{
-				err:    errors.ErrInternal,
-				result: nil,
+				err:        errors.ErrInternal,
+				sportLines: nil,
 			},
 		},
 		{
@@ -202,8 +215,8 @@ func TestCalculates(t *testing.T) {
 				},
 			},
 			expected: &CalculateExpected{
-				err:    nil,
-				result: []*commonDomain.SportLine{{Type: commonDomain.Baseball, Score: 1.5}},
+				err:        nil,
+				sportLines: []*commonDomain.SportLine{{Type: commonDomain.Baseball, Score: 1.5}},
 			},
 		},
 		{
@@ -221,8 +234,8 @@ func TestCalculates(t *testing.T) {
 				},
 			},
 			expected: &CalculateExpected{
-				err:    nil,
-				result: []*commonDomain.SportLine{{Type: commonDomain.Baseball, Score: -0.5}},
+				err:        nil,
+				sportLines: []*commonDomain.SportLine{{Type: commonDomain.Baseball, Score: -0.5}},
 			},
 		},
 	}
@@ -230,22 +243,15 @@ func TestCalculates(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := NewSportLineService(test.mockDB)
 			input := test.input
-			result, err := service.Calculate(input.types, input.isNeedDelta, input.subs)
+			actualSportLines, err := service.Calculate(input.types, input.isNeedDelta, input.subs)
+			expected := test.expected
 			if err != nil {
-				assert.Error(t, test.expected.err, err)
+				assert.Error(t, expected.err, err)
 			} else {
-				assert.Equal(t, test.expected.err, err)
+				assert.Equal(t, expected.err, err)
 			}
-			if result == nil {
-				assert.Equal(t, test.expected.result, result)
-			} else {
-				assert.Equal(t, len(test.expected.result), len(result))
-				for i, line := range result {
-					expectedLine := test.expected.result[i]
-					assert.Equal(t, expectedLine.Score, line.Score)
-					assert.Equal(t, expectedLine.Type, line.Type)
-				}
-			}
+
+			compareSportLines(t, expected.sportLines, actualSportLines)
 		})
 	}
 }
