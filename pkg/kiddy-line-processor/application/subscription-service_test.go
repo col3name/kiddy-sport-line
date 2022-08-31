@@ -28,7 +28,7 @@ func getFieldValue(object interface{}, fieldName string) *reflect.Value {
 	return nil
 }
 
-func equalSubscriptionMessageDTO(t *testing.T, lhs, rhs *SubscriptionMessageDTO) {
+func compareSubscriptionMessageDTO(t *testing.T, lhs, rhs *SubscriptionMessageDTO) {
 	assert.Equal(t, lhs.UpdateIntervalSecond, rhs.UpdateIntervalSecond)
 	assert.Equal(t, lhs.ClientId, rhs.ClientId)
 	assert.Equal(t, len(lhs.Sports), len(rhs.Sports))
@@ -37,74 +37,84 @@ func equalSubscriptionMessageDTO(t *testing.T, lhs, rhs *SubscriptionMessageDTO)
 	}
 }
 
-func TestPushMessage(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *SubscriptionMessageDTO
-		expected *expectedPushMessage
-	}{
-		{
-			name: "empty sports",
-			input: &SubscriptionMessageDTO{
-				ClientId:             1,
-				Sports:               []domain.SportType{},
-				UpdateIntervalSecond: 1,
-			},
-			expected: &expectedPushMessage{queueSize: 0},
+func compareSports(t *testing.T, expected, actual SportTypeMap) {
+	assert.Equal(t, len(expected), len(actual))
+	for sportType, line := range actual {
+		expectedLine, ok := expected[sportType]
+		assert.True(t, ok)
+		assert.Equal(t, expectedLine, line)
+	}
+}
+
+var testsCaseForPushMessage = []struct {
+	name     string
+	input    *SubscriptionMessageDTO
+	expected *expectedPushMessage
+}{
+	{
+		name: "empty sports",
+		input: &SubscriptionMessageDTO{
+			ClientId:             1,
+			Sports:               []domain.SportType{},
+			UpdateIntervalSecond: 1,
 		},
-		{
-			name: "invalid client id",
-			input: &SubscriptionMessageDTO{
-				ClientId:             0,
-				Sports:               []domain.SportType{},
-				UpdateIntervalSecond: 1,
-			},
-			expected: &expectedPushMessage{queueSize: 0},
+		expected: &expectedPushMessage{queueSize: 0},
+	},
+	{
+		name: "invalid client id",
+		input: &SubscriptionMessageDTO{
+			ClientId:             0,
+			Sports:               []domain.SportType{},
+			UpdateIntervalSecond: 1,
 		},
-		{
-			name: "negative client id",
-			input: &SubscriptionMessageDTO{
-				ClientId:             -1,
-				Sports:               []domain.SportType{},
-				UpdateIntervalSecond: 1,
-			},
-			expected: &expectedPushMessage{queueSize: 0},
+		expected: &expectedPushMessage{queueSize: 0},
+	},
+	{
+		name: "negative client id",
+		input: &SubscriptionMessageDTO{
+			ClientId:             -1,
+			Sports:               []domain.SportType{},
+			UpdateIntervalSecond: 1,
 		},
-		{
-			name: "update interval < 1",
-			input: &SubscriptionMessageDTO{
-				ClientId:             -1,
-				Sports:               []domain.SportType{},
-				UpdateIntervalSecond: 1,
-			},
-			expected: &expectedPushMessage{queueSize: 0},
+		expected: &expectedPushMessage{queueSize: 0},
+	},
+	{
+		name: "update interval < 1",
+		input: &SubscriptionMessageDTO{
+			ClientId:             -1,
+			Sports:               []domain.SportType{},
+			UpdateIntervalSecond: 1,
 		},
-		{
-			name: "update interval < 1",
-			input: &SubscriptionMessageDTO{
-				ClientId:             -1,
-				Sports:               []domain.SportType{},
-				UpdateIntervalSecond: 1,
-			},
-			expected: &expectedPushMessage{queueSize: 0},
+		expected: &expectedPushMessage{queueSize: 0},
+	},
+	{
+		name: "update interval < 1",
+		input: &SubscriptionMessageDTO{
+			ClientId:             -1,
+			Sports:               []domain.SportType{},
+			UpdateIntervalSecond: 1,
 		},
-		{
-			name: "valid sub message",
-			input: &SubscriptionMessageDTO{
+		expected: &expectedPushMessage{queueSize: 0},
+	},
+	{
+		name: "valid sub message",
+		input: &SubscriptionMessageDTO{
+			ClientId:             1,
+			Sports:               []domain.SportType{domain.Baseball},
+			UpdateIntervalSecond: 1,
+		},
+		expected: &expectedPushMessage{queueSize: 1,
+			msg: &SubscriptionMessageDTO{
 				ClientId:             1,
 				Sports:               []domain.SportType{domain.Baseball},
 				UpdateIntervalSecond: 1,
 			},
-			expected: &expectedPushMessage{queueSize: 1,
-				msg: &SubscriptionMessageDTO{
-					ClientId:             1,
-					Sports:               []domain.SportType{domain.Baseball},
-					UpdateIntervalSecond: 1,
-				},
-			},
 		},
-	}
-	for _, test := range tests {
+	},
+}
+
+func TestPushMessage(t *testing.T) {
+	for _, test := range testsCaseForPushMessage {
 		t.Run(test.name, func(t *testing.T) {
 			manager := NewSubscriptionManager(&MockLinesService{FakeCalculate: nil, FakeIsChanged: nil}, &fake.Logger{})
 			manager.PushMessage(test.input)
@@ -112,7 +122,7 @@ func TestPushMessage(t *testing.T) {
 			if test.expected.queueSize > 0 {
 				peek := manager.messageQueue.Peek()
 				msg := test.expected.msg
-				equalSubscriptionMessageDTO(t, msg, peek)
+				compareSubscriptionMessageDTO(t, msg, peek)
 			}
 		})
 	}
@@ -148,47 +158,69 @@ type expectedUnsubscribeClient struct {
 	subscription      *ClientSubscription
 }
 
-func TestUnsubscribeClient(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *inputUnsubscribeClient
-		expected *expectedUnsubscribeClient
-	}{
-		{
-			name: "not exist client",
-			input: &inputUnsubscribeClient{
-				subscriptions: map[int]*ClientSubscription{},
-				clientId:      1,
-			},
-			expected: &expectedUnsubscribeClient{
-				exist:             false,
-				subscriptionsSize: 0,
-				subscription:      nil,
-			},
-		},
-		{
-			name: "not exist client",
-			input: &inputUnsubscribeClient{
-				subscriptions: map[int]*ClientSubscription{
-					1: {
-						Sports: map[domain.SportType]float32{domain.Baseball: 1.0},
-						Task:   time.NewTicker(1),
-					},
-					2: {
-						Sports: map[domain.SportType]float32{domain.Baseball: 1.0},
-						Task:   time.NewTicker(1),
-					},
-				},
-				clientId: 1,
-			},
-			expected: &expectedUnsubscribeClient{
-				exist:             false,
-				subscriptionsSize: 1,
-				subscription:      nil,
-			},
-		},
+func compareSubscriptionManager(t *testing.T, expected *expectedUnsubscribeClient, input *inputUnsubscribeClient, manager *subscriptionServiceImpl) {
+	actualSubscription, ok := manager.subscriptions[input.clientId]
+
+	assert.Equal(t, expected.exist, ok)
+	assert.Equal(t, expected.subscriptionsSize, len(manager.subscriptions))
+
+	compareClientSubscription(t, expected.subscription, actualSubscription)
+}
+
+func compareClientSubscription(t *testing.T, expectSubscription, actualSubscription *ClientSubscription) {
+	if expectSubscription == nil {
+		assert.True(t, actualSubscription == nil)
+		return
 	}
-	for _, test := range tests {
+
+	assert.Equal(t, expectSubscription, actualSubscription)
+	assert.Equal(t, expectSubscription.Task != nil, actualSubscription.Task != nil)
+
+	compareSports(t, expectSubscription.Sports, actualSubscription.Sports)
+}
+
+var testsCaseForUnsubscribeClient = []struct {
+	name     string
+	input    *inputUnsubscribeClient
+	expected *expectedUnsubscribeClient
+}{
+	{
+		name: "not exist client",
+		input: &inputUnsubscribeClient{
+			subscriptions: map[int]*ClientSubscription{},
+			clientId:      1,
+		},
+		expected: &expectedUnsubscribeClient{
+			exist:             false,
+			subscriptionsSize: 0,
+			subscription:      nil,
+		},
+	},
+	{
+		name: "not exist client",
+		input: &inputUnsubscribeClient{
+			subscriptions: map[int]*ClientSubscription{
+				1: {
+					Sports: map[domain.SportType]float32{domain.Baseball: 1.0},
+					Task:   time.NewTicker(1),
+				},
+				2: {
+					Sports: map[domain.SportType]float32{domain.Baseball: 1.0},
+					Task:   time.NewTicker(1),
+				},
+			},
+			clientId: 1,
+		},
+		expected: &expectedUnsubscribeClient{
+			exist:             false,
+			subscriptionsSize: 1,
+			subscription:      nil,
+		},
+	},
+}
+
+func TestUnsubscribeClient(t *testing.T) {
+	for _, test := range testsCaseForUnsubscribeClient {
 		t.Run(test.name, func(t *testing.T) {
 			manager := NewSubscriptionManager(&MockLinesService{FakeCalculate: nil, FakeIsChanged: nil}, &fake.Logger{})
 			input := test.input
@@ -196,28 +228,8 @@ func TestUnsubscribeClient(t *testing.T) {
 
 			manager.subscriptions = input.subscriptions
 			manager.Unsubscribe(input.clientId)
-			subscription, ok := manager.subscriptions[input.clientId]
 
-			assert.Equal(t, expected.exist, ok)
-			assert.Equal(t, expected.subscriptionsSize, len(manager.subscriptions))
-			expectSub := expected.subscription
-			if expectSub == nil {
-				assert.True(t, subscription == nil)
-			} else {
-				assert.Equal(t, expectSub, subscription)
-				if expectSub.Task != nil {
-					assert.True(t, subscription.Task != nil)
-				} else {
-					assert.True(t, subscription.Task == nil)
-				}
-
-				assert.Equal(t, len(expectSub.Sports), len(subscription.Sports))
-				for sportType, line := range subscription.Sports {
-					expectedLine, ok := expectSub.Sports[sportType]
-					assert.True(t, ok)
-					assert.Equal(t, expectedLine, line)
-				}
-			}
+			compareSubscriptionManager(t, expected, input, manager)
 		})
 	}
 }
@@ -247,375 +259,442 @@ type inputSubscribe struct {
 
 type expectedSubscribe struct {
 	messageQueueSize        int
-	success                 bool
+	subscribedOk            bool
 	messageQueue            *MessageQueue
 	responseSenderCalled    bool
 	subscriptions           map[int]*ClientSubscription
 	responseSenderCountCall int64
 }
 
-func TestSubscribe(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *inputSubscribe
-		expected *expectedSubscribe
-	}{
-		{
-			name: "response sender nil",
-			input: &inputSubscribe{
-				clientId:         1,
-				responseSender:   nil,
-				sportLineService: nil,
-				messageQueue:     nil,
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize:     0,
-				success:              false,
-				responseSenderCalled: false,
-			},
-		},
-		{
-			name: "empty message queue",
-			input: &inputSubscribe{
-				clientId:         1,
-				responseSender:   nil,
-				sportLineService: nil,
-				messageQueue:     nil,
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize:     0,
-				success:              false,
-				responseSenderCalled: false,
-			},
-		},
-		{
-			name: "empty sport list for subscribe",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{FakeSend: func(sports []*domain.SportLine) error {
-					return nil
-				}},
-				sportLineService: &MockLinesService{
-					FakeCalculate: nil,
-					FakeIsChanged: nil,
-				},
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 1, Sports: []domain.SportType{}, UpdateIntervalSecond: 1},
-					},
-				},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize:     0,
-				success:              false,
-				responseSenderCalled: false,
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{},
-				},
-				subscriptions: map[int]*ClientSubscription{},
-			},
-		},
-		{
-			name: "subscription client id != parameter clientId",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{FakeSend: func(sports []*domain.SportLine) error {
-					return nil
-				}},
-				sportLineService: &MockLinesService{
-					FakeCalculate: nil,
-					FakeIsChanged: nil,
-				},
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 2, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
-					},
-				},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize: 1,
-				success:          false,
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 2, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
-					},
-				},
-				responseSenderCalled: false,
-				subscriptions:        map[int]*ClientSubscription{},
-			},
-		},
-		{
-			name: "subscription exist and not changed",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{
-					Called: false,
-					FakeSend: func(sports []*domain.SportLine) error {
-						return nil
-					}},
-				sportLineService: &MockLinesService{
-					FakeCalculate: nil,
-					FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
-						return false
-					},
-				},
+func compareDeepSubscriptionManager(t *testing.T, input *inputSubscribe, expected *expectedSubscribe, manager *subscriptionServiceImpl) {
+	compareSubscribeResult(t, manager, input, expected)
 
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
-					2: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize: 1,
-				success:          false,
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
-					2: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
-				},
-				responseSenderCalled: false,
-			},
-		},
-		{
-			name: "subscription client id == parameter clientId and client not exist on subscription map",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{
-					Called: false,
-					FakeSend: func(sports []*domain.SportLine) error {
-						return nil
-					}},
-				sportLineService: &MockLinesService{
-					FakeCalculate: nil,
-					FakeIsChanged: nil,
-				},
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize: 1,
-				success:          true,
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				responseSenderCalled: true,
-			},
-		},
-		{
-			name: "not have message for process",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{
-					Called: false,
-					FakeSend: func(sports []*domain.SportLine) error {
-						return nil
-					}},
-				sportLineService: &MockLinesService{
-					FakeCalculate: nil,
-					FakeIsChanged: nil,
-				},
-				messageQueue: &MessageQueue{},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize:     0,
-				success:              false,
-				messageQueue:         &MessageQueue{},
-				responseSenderCalled: false,
-			},
-		},
-		{
-			name: "subscription client id == parameter clientId and exist in subscription map but sub not changed",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{
-					Called: false,
-					FakeSend: func(sports []*domain.SportLine) error {
-						return nil
-					}},
-				sportLineService: &MockLinesService{
-					FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
-						return false
-					},
-				},
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize: 1,
-				success:          false,
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				responseSenderCalled: false,
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-		},
-		{
-			name: "change subscription",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{
-					Called:    false,
-					CountCall: 0,
-					FakeSend: func(sports []*domain.SportLine) error {
-						return nil
-					}},
-				sportLineService: &MockLinesService{
-					FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
-						return []*domain.SportLine{
-							{Score: 1.0, Type: domain.Baseball},
-							{Score: 1.5, Type: domain.Soccer},
-						}, nil
-					},
-					FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
-						return true
-					},
-				},
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
-						{ClientId: 1, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize: 1,
-				success:          true,
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				responseSenderCountCall: 2,
-				responseSenderCalled:    true,
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-		},
-		{
-			name: "failed get data from database",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{
-					Called: false,
-					FakeSend: func(sports []*domain.SportLine) error {
-						return nil
-					}},
-				sportLineService: &MockLinesService{
-					FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
-						return nil, errors.New("fake error")
-					},
-					FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
-						return true
-					},
-				},
+	expectedQueue := expected.messageQueue
+	actualQueue := manager.messageQueue
+	compareMessageQueue(t, expected.messageQueueSize, expectedQueue, actualQueue)
+	compareResponseSenderCalled(t, expected, input)
+	compareSubscriptions(t, expected.subscriptions, manager.subscriptions)
+}
 
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize: 1,
-				success:          true,
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				responseSenderCalled: false,
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-		},
-		{
-			name: "failed send data to subscriber",
-			input: &inputSubscribe{
-				clientId: 1,
-				responseSender: &mockResponseSender{
-					Called: false,
-					FakeSend: func(sports []*domain.SportLine) error {
-						return errors.New("fake error")
-					}},
-				sportLineService: &MockLinesService{
-					FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
-						return []*domain.SportLine{
-							{Score: 1.0, Type: domain.Baseball},
-							{Score: 1.5, Type: domain.Soccer},
-						}, nil
-					},
-					FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
-						return true
-					},
-				},
+func compareSubscribeResult(t *testing.T, manager *subscriptionServiceImpl, input *inputSubscribe, expected *expectedSubscribe) {
+	respSender := input.responseSender
 
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-			expected: &expectedSubscribe{
-				messageQueueSize: 1,
-				success:          true,
-				messageQueue: &MessageQueue{
-					clientSubMsgQueue: []*SubscriptionMessageDTO{
-						{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
-					},
-				},
-				responseSenderCalled: false,
-				subscriptions: map[int]*ClientSubscription{
-					1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
-				},
-			},
-		},
+	actualSubscribedOk := manager.Subscribe(respSender, input.clientId)
+	if expected.responseSenderCountCall <= 1 {
+		assert.Equal(t, expected.subscribedOk, actualSubscribedOk)
+		return
 	}
-	for _, test := range tests {
+	actualSubscribedOk = manager.Subscribe(respSender, input.clientId)
+	fieldValue := getFieldValue(input.responseSender, "CountCall")
+	if fieldValue != nil {
+		assert.Equal(t, expected.responseSenderCountCall, fieldValue.Int())
+	}
+
+	assert.Equal(t, expected.subscribedOk, actualSubscribedOk)
+}
+
+func compareMessageQueue(t *testing.T, expectedSize int, expectedQueue, actualQueue *MessageQueue) {
+	assert.Equal(t, expectedSize, actualQueue.Size())
+	if expectedQueue == nil {
+		return
+	}
+	assert.Equal(t, expectedQueue.Size(), actualQueue.Size())
+	for i := 0; i < expectedQueue.Size(); i++ {
+		expectedQueue.Pop()
+		compareDeepQueueData(t, expectedQueue.data, actualQueue.data)
+	}
+}
+
+func compareDeepQueueData(t *testing.T, expected, actual []*SubscriptionMessageDTO) {
+	for j, expectedDto := range expected {
+		compareSubscriptionMessageDTO(t, expectedDto, actual[j])
+	}
+}
+
+func compareResponseSenderCalled(t *testing.T, expected *expectedSubscribe, input *inputSubscribe) {
+	if expected.responseSenderCalled {
+		fieldValue := getFieldValue(input.responseSender, "Called")
+		if fieldValue != nil {
+			assert.Equal(t, expected.responseSenderCalled, fieldValue.Bool())
+		}
+	}
+}
+
+func compareSubscriptions(t *testing.T, expectedSubsMap, actualSubsMap map[int]*ClientSubscription) {
+	if expectedSubsMap == nil {
+		return
+	}
+	assert.Equal(t, len(expectedSubsMap), len(actualSubsMap))
+	for i, expectedSubs := range expectedSubsMap {
+		actualSubscription := (actualSubsMap)[i]
+		compareSports(t, expectedSubs.Sports, actualSubscription.Sports)
+	}
+}
+
+var testsCaseForSubscribe = []struct {
+	name     string
+	input    *inputSubscribe
+	expected *expectedSubscribe
+}{
+	{
+		name: "response sender nil",
+		input: &inputSubscribe{
+			clientId:         1,
+			responseSender:   nil,
+			sportLineService: nil,
+			messageQueue:     nil,
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize:     0,
+			subscribedOk:         false,
+			responseSenderCalled: false,
+		},
+	},
+	{
+		name: "empty message queue",
+		input: &inputSubscribe{
+			clientId:         1,
+			responseSender:   nil,
+			sportLineService: nil,
+			messageQueue:     nil,
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize:     0,
+			subscribedOk:         false,
+			responseSenderCalled: false,
+		},
+	},
+	{
+		name: "empty sport list for subscribe",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{FakeSend: func(sports []*domain.SportLine) error {
+				return nil
+			}},
+			sportLineService: &MockLinesService{
+				FakeCalculate: nil,
+				FakeIsChanged: nil,
+			},
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 1, Sports: []domain.SportType{}, UpdateIntervalSecond: 1},
+				},
+			},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize:     0,
+			subscribedOk:         false,
+			responseSenderCalled: false,
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{},
+			},
+			subscriptions: map[int]*ClientSubscription{},
+		},
+	},
+	{
+		name: "subscription client id != parameter clientId",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{FakeSend: func(sports []*domain.SportLine) error {
+				return nil
+			}},
+			sportLineService: &MockLinesService{
+				FakeCalculate: nil,
+				FakeIsChanged: nil,
+			},
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 2, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
+				},
+			},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize: 1,
+			subscribedOk:     false,
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 2, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
+				},
+			},
+			responseSenderCalled: false,
+			subscriptions:        map[int]*ClientSubscription{},
+		},
+	},
+	{
+		name: "subscription exist and not changed",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{
+				Called: false,
+				FakeSend: func(sports []*domain.SportLine) error {
+					return nil
+				}},
+			sportLineService: &MockLinesService{
+				FakeCalculate: nil,
+				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+					return false
+				},
+			},
+
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
+				2: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize: 1,
+			subscribedOk:     false,
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
+				2: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
+			},
+			responseSenderCalled: false,
+		},
+	},
+	{
+		name: "subscription client id == parameter clientId and client not exist on subscription map",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{
+				Called: false,
+				FakeSend: func(sports []*domain.SportLine) error {
+					return nil
+				}},
+			sportLineService: &MockLinesService{
+				FakeCalculate: nil,
+				FakeIsChanged: nil,
+			},
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize: 1,
+			subscribedOk:     true,
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			responseSenderCalled: true,
+		},
+	},
+	{
+		name: "not have message for process",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{
+				Called: false,
+				FakeSend: func(sports []*domain.SportLine) error {
+					return nil
+				}},
+			sportLineService: &MockLinesService{
+				FakeCalculate: nil,
+				FakeIsChanged: nil,
+			},
+			messageQueue: &MessageQueue{},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize:     0,
+			subscribedOk:         false,
+			messageQueue:         &MessageQueue{},
+			responseSenderCalled: false,
+		},
+	},
+	{
+		name: "subscription client id == parameter clientId and exist in subscription map but sub not changed",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{
+				Called: false,
+				FakeSend: func(sports []*domain.SportLine) error {
+					return nil
+				}},
+			sportLineService: &MockLinesService{
+				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+					return false
+				},
+			},
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize: 1,
+			subscribedOk:     false,
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			responseSenderCalled: false,
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+	},
+	{
+		name: "change subscription",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{
+				Called:    false,
+				CountCall: 0,
+				FakeSend: func(sports []*domain.SportLine) error {
+					return nil
+				}},
+			sportLineService: &MockLinesService{
+				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
+					return []*domain.SportLine{
+						{Score: 1.0, Type: domain.Baseball},
+						{Score: 1.5, Type: domain.Soccer},
+					}, nil
+				},
+				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+					return true
+				},
+			},
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
+					{ClientId: 1, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize: 1,
+			subscribedOk:     true,
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			responseSenderCountCall: 2,
+			responseSenderCalled:    true,
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+	},
+	{
+		name: "failed get data from database",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{
+				Called: false,
+				FakeSend: func(sports []*domain.SportLine) error {
+					return nil
+				}},
+			sportLineService: &MockLinesService{
+				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
+					return nil, errors.New("fake error")
+				},
+				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+					return true
+				},
+			},
+
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize: 1,
+			subscribedOk:     true,
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			responseSenderCalled: false,
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+	},
+	{
+		name: "failed send data to subscriber",
+		input: &inputSubscribe{
+			clientId: 1,
+			responseSender: &mockResponseSender{
+				Called: false,
+				FakeSend: func(sports []*domain.SportLine) error {
+					return errors.New("fake error")
+				}},
+			sportLineService: &MockLinesService{
+				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
+					return []*domain.SportLine{
+						{Score: 1.0, Type: domain.Baseball},
+						{Score: 1.5, Type: domain.Soccer},
+					}, nil
+				},
+				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+					return true
+				},
+			},
+
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+		expected: &expectedSubscribe{
+			messageQueueSize: 1,
+			subscribedOk:     true,
+			messageQueue: &MessageQueue{
+				data: []*SubscriptionMessageDTO{
+					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
+				},
+			},
+			responseSenderCalled: false,
+			subscriptions: map[int]*ClientSubscription{
+				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
+			},
+		},
+	},
+}
+
+func TestSubscribe(t *testing.T) {
+	for _, test := range testsCaseForSubscribe {
 		t.Run(test.name, func(t *testing.T) {
 			input := test.input
 			expected := test.expected
+
 			manager := NewSubscriptionManager(input.sportLineService, &fake.Logger{})
 			if input.messageQueue != nil {
 				manager.messageQueue = input.messageQueue
@@ -623,47 +702,9 @@ func TestSubscribe(t *testing.T) {
 			if input.subscriptions != nil {
 				manager.subscriptions = input.subscriptions
 			}
-			respSender := input.responseSender
-			success := manager.Subscribe(respSender, input.clientId)
-			if expected.responseSenderCountCall > 1 {
-				success = manager.Subscribe(respSender, input.clientId)
-				fieldValue := getFieldValue(input.responseSender, "CountCall")
-				if fieldValue != nil {
-					assert.Equal(t, expected.responseSenderCountCall, fieldValue.Int())
-				}
-			}
-			queue := manager.messageQueue
-			assert.Equal(t, expected.success, success)
-			assert.Equal(t, expected.messageQueueSize, queue.Size())
-			expectedQueue := expected.messageQueue
-			if expectedQueue != nil {
-				assert.Equal(t, expectedQueue.Size(), queue.Size())
-				for i := 0; i < expectedQueue.Size(); i++ {
-					expectedQueue.Pop()
-					for i, expectedDto := range expectedQueue.clientSubMsgQueue {
-						dto := queue.clientSubMsgQueue[i]
-						equalSubscriptionMessageDTO(t, expectedDto, dto)
-					}
-				}
-			}
-			if expected.responseSenderCalled {
-				fieldValue := getFieldValue(input.responseSender, "Called")
-				if fieldValue != nil {
-					assert.Equal(t, expected.responseSenderCalled, fieldValue.Bool())
-				}
-			}
-			if expected.subscriptions != nil {
-				assert.Equal(t, len(expected.subscriptions), len(manager.subscriptions))
-				for i, expectedSubs := range expected.subscriptions {
-					subs := manager.subscriptions[i]
-					assert.Equal(t, len(expectedSubs.Sports), len(subs.Sports))
-					for sportType, line := range expectedSubs.Sports {
-						f, ok := subs.Sports[sportType]
-						assert.True(t, ok)
-						assert.Equal(t, line, f)
-					}
-				}
-			}
+
+			compareDeepSubscriptionManager(t, input, expected, manager)
+
 			manager.Unsubscribe(input.clientId)
 		})
 	}
