@@ -45,14 +45,7 @@ func main() {
 	s.run()
 }
 
-func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostgres.PgxPoolIface, logger loggerInterface.Logger) error {
-	_, err := sportLineRepo.GetLinesBySportTypes([]commonDomain.SportType{commonDomain.Baseball})
-	if err != nil {
-		if err != errors.ErrTableNotExist {
-			return err
-		}
-
-		createSportLinesSql := `BEGIN TRANSACTION;
+const CreateSportLinesSql = `BEGIN TRANSACTION;
 				CREATE TABLE sport_lines
 				(
 					id         UUID PRIMARY KEY UNIQUE NOT NULL,
@@ -66,18 +59,24 @@ func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostg
 					   ('4b9d52e2-1473-4cdb-bba8-c1c1cac933f5', 'football', 1.0);
 				END ;`
 
-		cancelFunc, err := postgres.WithTx(conn, func(tx pgx.Tx) error {
-			_, err = tx.Exec(context.Background(), createSportLinesSql)
-			return err
-		}, logger)
-		if cancelFunc != nil {
-			defer cancelFunc()
-		}
-		if err != nil {
-			return err
-		}
+func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostgres.PgxPoolIface, logger loggerInterface.Logger) error {
+	defaultSubscriptions := []commonDomain.SportType{commonDomain.Baseball}
+	_, err := sportLineRepo.GetLinesBySportTypes(defaultSubscriptions)
+	if err == nil {
+		return nil
 	}
-	return nil
+	if err != errors.ErrTableNotExist {
+		return err
+	}
+
+	cancelFunc, err := postgres.WithTx(conn, func(tx pgx.Tx) error {
+		_, err = tx.Exec(context.Background(), CreateSportLinesSql)
+		return err
+	}, logger)
+	if cancelFunc != nil {
+		defer cancelFunc()
+	}
+	return err
 }
 
 type config struct {
@@ -90,34 +89,11 @@ type config struct {
 }
 
 func setupConfig(logger loggerInterface.Logger) *config {
-	updatePeriod := 1
-	nStr := os.Getenv("UPDATE_INTERVAL")
-	if !str.Empty(nStr) {
-		val, err := strconv.Atoi(nStr)
-		errPositive := "UPDATE_INTERVAL must be positive integer"
-		if err != nil {
-			logger.Error(errPositive)
-		}
-		if val < 1 {
-			logger.Error(errPositive)
-		}
-	}
-	linesProviderUrl := os.Getenv("LINES_PROVIDER_URL")
-	if str.Empty(linesProviderUrl) {
-		linesProviderUrl = "http://localhost:8000"
-	}
-	dbURL := os.Getenv("DATABASE_URL")
-	if str.Empty(dbURL) {
-		dbURL = "postgres://postgres:postgres@localhost:5432/lines"
-	}
-	httpUrl := os.Getenv("HTTP_URL")
-	if str.Empty(httpUrl) {
-		httpUrl = ":3333"
-	}
-	grpcUrl := os.Getenv("GRPC_URL")
-	if str.Empty(grpcUrl) {
-		grpcUrl = ":50051"
-	}
+	updatePeriod := getEnvVariableInt("UPDATE_INTERVAL", 1, logger)
+	linesProviderUrl := getEnvVariable("LINES_PROVIDER_URL", "http://localhost:8000")
+	dbURL := getEnvVariable("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/lines")
+	httpUrl := getEnvVariable("HTTP_URL", ":3333")
+	grpcUrl := getEnvVariable("GRPC_URL", ":50051")
 
 	return &config{
 		UpdatePeriod:     updatePeriod,
@@ -127,6 +103,30 @@ func setupConfig(logger loggerInterface.Logger) *config {
 		DbUrl:            dbURL,
 		LogLevel:         "",
 	}
+}
+
+func getEnvVariableInt(key string, defaultValue int, logger loggerInterface.Logger) int {
+	defaultVal := strconv.Itoa(defaultValue)
+	valueString := getEnvVariable(key, defaultVal)
+	value, err := strconv.Atoi(valueString)
+	msg := key + " must be positive integer. Set default value: " + defaultVal
+	if err != nil {
+		logger.Error(msg)
+		return defaultValue
+	} else if value < 1 {
+		logger.Error(msg)
+		return defaultValue
+	}
+
+	return value
+}
+
+func getEnvVariable(key, defaultVal string) string {
+	value := os.Getenv(key)
+	if str.Empty(value) {
+		value = defaultVal
+	}
+	return value
 }
 
 func setupDbConnection(dbUrl string, logger loggerInterface.Logger) commonPostgres.PgxPoolIface {
