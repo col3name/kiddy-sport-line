@@ -6,6 +6,7 @@ import (
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
+	str "github.com/col3name/lines/pkg/common/util/stringss"
 	"io"
 	"os"
 	"time"
@@ -18,7 +19,7 @@ import (
 func main() {
 	logger := logrusLogger.New()
 	kiddyGrpcUrl := os.Getenv("KIDDY_LINES_PROCESSOR_GRPC_URL")
-	if len(kiddyGrpcUrl) == 0 {
+	if str.Empty(kiddyGrpcUrl) {
 		kiddyGrpcUrl = "localhost:50051"
 	}
 

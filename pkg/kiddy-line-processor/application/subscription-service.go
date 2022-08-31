@@ -3,6 +3,7 @@ package application
 import (
 	"github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/common/util/array"
 	"github.com/col3name/lines/pkg/common/util/times"
 	"sync"
 	"time"
@@ -43,14 +44,14 @@ func (s *subscriptionServiceImpl) Subscribe(responseSender responseSender, clien
 		return false
 	}
 	subMsg := s.messageQueue.Peek()
-	if subMsg == nil || (subMsg.ClientId != clientId) {
+	if s.isUserAuthorOfMessage(subMsg, clientId) {
 		return false
 	}
 	return s.addNotifySubscriberTask(responseSender, subMsg)
 }
 
 func (s *subscriptionServiceImpl) PushMessage(dto *SubscriptionMessageDTO) {
-	if len(dto.Sports) == 0 || dto.ClientId < 0 || dto.UpdateIntervalSecond < 1 {
+	if !s.isValidMessage(dto) {
 		return
 	}
 	s.messageQueue.Push(dto)
@@ -60,17 +61,29 @@ func (s *subscriptionServiceImpl) Unsubscribe(clientId int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sub, ok := s.subscriptions[clientId]
-	if !ok || (ok && sub.Task == nil) {
+	if s.isExistTask(ok, sub) {
 		return
 	}
 	sub.Task.Stop()
 	delete(s.subscriptions, clientId)
 }
 
-func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender responseSender, subMsg *SubscriptionMessageDTO) bool {
-	clientId := subMsg.ClientId
-	sports := subMsg.Sports
-	if len(sports) == 0 {
+func (s *subscriptionServiceImpl) isUserAuthorOfMessage(subMsg *SubscriptionMessageDTO, clientId int) bool {
+	return subMsg == nil || (subMsg.ClientId != clientId)
+}
+
+func (s *subscriptionServiceImpl) isValidMessage(dto *SubscriptionMessageDTO) bool {
+	return !array.EmptyST(dto.Sports) && dto.ClientId >= 0 && dto.UpdateIntervalSecond >= 1
+}
+
+func (s *subscriptionServiceImpl) isExistTask(ok bool, sub *ClientSubscription) bool {
+	return !ok || (ok && sub.Task == nil)
+}
+
+func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender responseSender, subMessage *SubscriptionMessageDTO) bool {
+	clientId := subMessage.ClientId
+	sports := subMessage.Sports
+	if array.EmptyST(sports) {
 		s.messageQueue.Pop()
 		return false
 	}
@@ -78,12 +91,12 @@ func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender respons
 	sub, isExistSubTask := s.subscriptions[clientId]
 	s.mu.Unlock()
 	if !isExistSubTask {
-		s.addNotifySubscriberPeriodically(responseSender, subMsg)
+		s.addNotifySubscriberPeriodically(responseSender, subMessage)
 		return true
 	}
 	if s.isSubChanged(clientId, sports) {
 		sub.Task.Stop()
-		s.addNotifySubscriberPeriodically(responseSender, subMsg)
+		s.addNotifySubscriberPeriodically(responseSender, subMessage)
 		return true
 	}
 	s.messageQueue.Pop()
@@ -118,21 +131,19 @@ func (s *subscriptionServiceImpl) updateSportLineFn(sender responseSender, subMs
 
 func (s *subscriptionServiceImpl) isSubChanged(clientId int, sports []commonDomain.SportType) bool {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	sub, exist := s.subscriptions[clientId]
-	isSubChanged := true
-	if exist {
-		isSubChanged = s.sportLineService.IsChanged(exist, sub.Sports, sports)
-	}
-	s.mu.Unlock()
 
-	return isSubChanged
+	return !exist || exist && s.sportLineService.IsSubscriptionChanged(exist, sub.Sports, sports)
 }
+
+const DefaultScore = 1.0
 
 func (s *subscriptionServiceImpl) initClientSubscription(msg *SubscriptionMessageDTO) *ClientSubscription {
 	subToSports := make(SportTypeMap, 0)
 
 	for _, sportType := range msg.Sports {
-		subToSports[sportType] = 1.0
+		subToSports[sportType] = DefaultScore
 	}
 
 	sub := &ClientSubscription{

@@ -140,7 +140,7 @@ func (m *MockLinesService) Calculate(sports []domain.SportType, isNeedDelta bool
 	return m.FakeCalculate(sports, isNeedDelta, subs)
 }
 
-func (m *MockLinesService) IsChanged(exist bool, subscriptionMap SportTypeMap, subscribeToSports []domain.SportType) bool {
+func (m *MockLinesService) IsSubscriptionChanged(exist bool, subscriptionMap SportTypeMap, subscribeToSports []domain.SportType) bool {
 	if m.FakeIsChanged == nil {
 		return false
 	}

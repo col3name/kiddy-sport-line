@@ -127,7 +127,7 @@ func TestIsChanged(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := NewSportLineService(test.mockDB)
 			input := test.input
-			result := service.IsChanged(input.exist, input.subMap, input.sports)
+			result := service.IsSubscriptionChanged(input.exist, input.subMap, input.sports)
 			assert.Equal(t, test.expected, result)
 		})
 	}

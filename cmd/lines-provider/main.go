@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
+	str "github.com/col3name/lines/pkg/common/util/stringss"
 
 	"github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
@@ -21,7 +22,7 @@ func main() {
 	var err error
 	portStr := os.Getenv("PORT")
 	port := 8000
-	if len(portStr) > 0 {
+	if !str.Empty(portStr) {
 		port, err = strconv.Atoi(portStr)
 		if err != nil {
 			logger.Fatalf("Invalid port %s", portStr)

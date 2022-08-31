@@ -26,22 +26,7 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 	if countSportTypes < 1 {
 		return nil, appErr.ErrInvalidArgument
 	}
-	var sql string
-	getSqlSelectSportType := func(i int) string {
-		return fmt.Sprintf("SELECT score,sport_type FROM sport_lines WHERE sport_type = $%d ", i)
-	}
-	var data []interface{}
-	sql = getSqlSelectSportType(1)
-	data = append(data, sportTypes[0])
-	if countSportTypes > 1 {
-		for i := 1; i < countSportTypes; i++ {
-			sql += `UNION ALL `
-			sql += getSqlSelectSportType(i + 1)
-			data = append(data, sportTypes[i])
-		}
-	}
-	sql += ";"
-
+	sql, data := r.getSqlQueryAndData(sportTypes, countSportTypes)
 	rows, err := r.conn.Query(context.Background(), sql, data...)
 	if err != nil {
 		contains := strings.Contains(err.Error(), appErr.TableNotExistMessage)
@@ -68,7 +53,7 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 }
 
 func (r *SportRepoImpl) Store(model *domain.SportLine) error {
-	sql := "UPDATE sport_lines SET score = $1 WHERE sport_type = $2;"
+	const sql = "UPDATE sport_lines SET score = $1 WHERE sport_type = $2;"
 
 	job := func(tx pgx.Tx) error {
 		_, err := tx.Exec(context.Background(), sql, model.Score, model.Type)
@@ -82,4 +67,24 @@ func (r *SportRepoImpl) Store(model *domain.SportLine) error {
 		return infrastructure.InternalError(r.logger, err)
 	}
 	return nil
+}
+
+func (r *SportRepoImpl) getSqlQueryAndData(sportTypes []domain.SportType, countSportTypes int) (string, []interface{}) {
+	var sql string
+	var data []interface{}
+	sql = r.getSqlSelectSportType(1)
+	data = append(data, sportTypes[0])
+	if countSportTypes > 1 {
+		for i := 1; i < countSportTypes; i++ {
+			sql += ` UNION ALL `
+			sql += r.getSqlSelectSportType(i + 1)
+			data = append(data, sportTypes[i])
+		}
+	}
+	sql += ";"
+	return sql, data
+}
+
+func (r *SportRepoImpl) getSqlSelectSportType(i int) string {
+	return fmt.Sprintf("SELECT score,sport_type FROM sport_lines WHERE sport_type = $%d ", i)
 }

@@ -119,8 +119,6 @@ func (s *linesProviderAdapter) parseGetLinesResponse(bytes []byte, sportType com
 		score = model.Lines.Score
 	}
 	err = sport.SetScore(score)
-	if err != nil {
-		return nil, err
-	}
-	return &sport, nil
+
+	return &sport, err
 }

@@ -3,6 +3,7 @@ package grpc
 import (
 	"github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/common/util/array"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	"io"
@@ -11,15 +12,16 @@ import (
 )
 
 func parseSportRequest(sports []string) []commonDomain.SportType {
-	res := make([]commonDomain.SportType, 0)
+	result := make([]commonDomain.SportType, 3)
 
 	for _, sportType := range sports {
-		if val, err := commonDomain.NewSportType(sportType); err == nil {
-			res = append(res, val)
+		val, err := commonDomain.NewSportType(sportType)
+		if err == nil {
+			result = append(result, val)
 		}
 	}
 
-	return res
+	return result
 }
 
 type Server struct {
@@ -59,13 +61,13 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 			s.subscriptionManager.Unsubscribe(clientId)
 			continue
 		}
-		if in.IntervalInSecond < 1 || len(in.Sports) == 0 {
+		if in.IntervalInSecond < 1 || array.Empty(in.Sports) {
 			s.logger.Println("Error in receiving message from client. interval must be positive number :: ", err)
 			errCh <- err
 			continue
 		}
 		sportsList := parseSportRequest(in.Sports)
-		if len(sportsList) == 0 {
+		if array.EmptyST(sportsList) {
 			s.logger.Println("Error in receiving message from client. :: ")
 			errCh <- err
 			continue
@@ -82,7 +84,8 @@ func (s *Server) sendDataToSubscribers(stream pb.KiddyLineProcessor_SubscribeOnS
 	for {
 		for {
 			sender := &ResponseSenderGrpc{Stream: stream}
-			if ok := s.subscriptionManager.Subscribe(sender, clientId); !ok {
+			ok := s.subscriptionManager.Subscribe(sender, clientId)
+			if !ok {
 				break
 			}
 		}

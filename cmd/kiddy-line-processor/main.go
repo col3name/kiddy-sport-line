@@ -8,6 +8,7 @@ import (
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	commonPostgres "github.com/col3name/lines/pkg/common/infrastructure/postgres"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
+	str "github.com/col3name/lines/pkg/common/util/stringss"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/adapter"
@@ -91,7 +92,7 @@ type config struct {
 func setupConfig(logger loggerInterface.Logger) *config {
 	updatePeriod := 1
 	nStr := os.Getenv("UPDATE_INTERVAL")
-	if len(nStr) > 0 {
+	if !str.Empty(nStr) {
 		val, err := strconv.Atoi(nStr)
 		errPositive := "UPDATE_INTERVAL must be positive integer"
 		if err != nil {
@@ -102,19 +103,19 @@ func setupConfig(logger loggerInterface.Logger) *config {
 		}
 	}
 	linesProviderUrl := os.Getenv("LINES_PROVIDER_URL")
-	if len(linesProviderUrl) == 0 {
+	if str.Empty(linesProviderUrl) {
 		linesProviderUrl = "http://localhost:8000"
 	}
 	dbURL := os.Getenv("DATABASE_URL")
-	if len(dbURL) == 0 {
+	if str.Empty(dbURL) {
 		dbURL = "postgres://postgres:postgres@localhost:5432/lines"
 	}
 	httpUrl := os.Getenv("HTTP_URL")
-	if len(httpUrl) == 0 {
+	if str.Empty(httpUrl) {
 		httpUrl = ":3333"
 	}
 	grpcUrl := os.Getenv("GRPC_URL")
-	if len(grpcUrl) == 0 {
+	if str.Empty(grpcUrl) {
 		grpcUrl = ":50051"
 	}
 
