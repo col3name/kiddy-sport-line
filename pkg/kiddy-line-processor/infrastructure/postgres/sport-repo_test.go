@@ -138,7 +138,7 @@ func TestStore(t *testing.T) {
 			err = repo.Store(test.input.sport)
 
 			assert.Equal(t, err, err)
-			checkExpectationsWereMet(t, err, mock)
+			checkExpectationsWereMet(t, mock)
 		})
 	}
 }
@@ -312,7 +312,7 @@ func TestGetSportLines(t *testing.T) {
 
 			compareLines(t, expected, err, types)
 
-			checkExpectationsWereMet(t, err, mock)
+			checkExpectationsWereMet(t, mock)
 		})
 	}
 }
@@ -325,8 +325,8 @@ func getPgxMockPool(t *testing.T) (pgxmock.PgxPoolIface, error) {
 	return mock, err
 }
 
-func checkExpectationsWereMet(t *testing.T, err error, mock pgxmock.PgxPoolIface) {
-	if err = mock.ExpectationsWereMet(); err != nil {
+func checkExpectationsWereMet(t *testing.T, mock pgxmock.PgxPoolIface) {
+	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("there were unfulfilled expectations: %s", err)
 	}
 }
