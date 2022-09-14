@@ -19,7 +19,6 @@ import (
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
-	"net"
 	"sync"
 	"time"
 )
