@@ -11,9 +11,8 @@ import (
 )
 
 func ReadyCheckHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "{\"host\": \"%v\"}", r.Host)
+	data := fmt.Sprintf("{\"host\": \"%v\"}", r.Host)
+	WriteJSON(w, data)
 }
 
 func LogMiddleware(h http.Handler, logger loggerInterface.Logger) http.Handler {
@@ -49,4 +48,10 @@ func getKillSignalChan() chan os.Signal {
 	signal.Notify(osKillSignalChan, os.Interrupt, syscall.SIGTERM)
 
 	return osKillSignalChan
+}
+
+func WriteJSON(w http.ResponseWriter, data string) {
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(data))
 }
