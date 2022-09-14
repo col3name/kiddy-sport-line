@@ -132,9 +132,7 @@ func TestStore(t *testing.T) {
 			}
 			defer mock.Close()
 
-			expected := test.expected
-			expectedErr := expected.err
-			setupStoreUseCases(expected, mock, expectedErr, test)
+			setupStoreUseCases(mock, test)
 
 			repo := NewSportLineRepository(mock, fake.Logger{})
 			err = repo.Store(test.input.sport)
@@ -145,11 +143,18 @@ func TestStore(t *testing.T) {
 	}
 }
 
-func setupStoreUseCases(expected *expectedStore, mock pgxmock.PgxPoolIface, expectedErr error, test struct {
+func setupStoreUseCases(mock pgxmock.PgxPoolIface, test struct {
 	name     string
 	input    *inputStore
 	expected *expectedStore
 }) {
+	input := test.input
+	expected := test.expected
+	expectedErr := expected.err
+	inputSportLine := input.sport
+	inputScore := inputSportLine.Score
+	inputType := inputSportLine.Type
+
 	switch expected.status {
 	case ok:
 		mock.ExpectBegin()
@@ -170,14 +175,14 @@ func setupStoreUseCases(expected *expectedStore, mock pgxmock.PgxPoolIface, expe
 	case successDoRollback:
 		mock.ExpectBegin().WillReturnError(nil)
 		mock.ExpectExec("UPDATE sport_lines").
-			WithArgs(test.input.sport.Score, test.input.sport.Type).
+			WithArgs(inputScore, inputType).
 			WillReturnError(expectedErr)
 		mock.ExpectRollback().WillReturnError(nil)
 	case failedDoCommit:
 		mock.ExpectBegin().WillReturnError(nil)
 		mock.ExpectExec("UPDATE sport_lines").
-			WithArgs(test.input.sport.Score, test.input.sport.Type).
-			WillReturnResult(test.expected.result).
+			WithArgs(inputScore, inputType).
+			WillReturnResult(expected.result).
 			WillReturnError(nil)
 		mock.ExpectCommit().WillReturnError(expectedErr)
 	case successDoCommit:
@@ -300,9 +305,7 @@ func TestGetSportLines(t *testing.T) {
 			input := test.input
 			expected := test.expected
 
-			sportTypes := fillData(input)
-
-			setupGetSportLinesUseCases(input, mock, sportTypes, expected)
+			setupGetSportLinesUseCases(mock, input, expected)
 
 			repo := NewSportLineRepository(mock, fake.Logger{})
 			types, err := repo.GetLinesBySportTypes(input.sportTypes)
@@ -336,7 +339,9 @@ func fillData(input *inputGetLineBySport) []interface{} {
 	return data
 }
 
-func setupGetSportLinesUseCases(input *inputGetLineBySport, mock pgxmock.PgxPoolIface, data []interface{}, expected *expectedGetLineBySport) {
+func setupGetSportLinesUseCases(mock pgxmock.PgxPoolIface, input *inputGetLineBySport, expected *expectedGetLineBySport) {
+	data := fillData(input)
+
 	switch input.status {
 	case tableNotExist:
 		mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").WithArgs(data...).
@@ -377,16 +382,23 @@ func setupGetSportLinesUseCases(input *inputGetLineBySport, mock pgxmock.PgxPool
 	}
 }
 
-func compareLines(t *testing.T, expected *expectedGetLineBySport, err error, types []*domain.SportLine) {
+func compareLines(t *testing.T, expected *expectedGetLineBySport, err error, actualLines []*domain.SportLine) {
 	assert.Equal(t, expected.err, err)
-	if expected.lines != nil {
-		assert.Equal(t, len(expected.lines), len(types))
+
+	expectedLines := expected.lines
+	if expectedLines != nil {
+		assert.Equal(t, len(expectedLines), len(actualLines))
 	} else {
-		assert.Nil(t, types)
+		assert.Nil(t, actualLines)
 	}
-	for i, expectedLine := range expected.lines {
-		actualLine := types[i]
-		assert.Equal(t, expectedLine.Type, actualLine.Type)
-		assert.Equal(t, expectedLine.Score, actualLine.Score)
+
+	for i, expectedLine := range expectedLines {
+		actualLine := actualLines[i]
+		compareSportLines(t, expectedLine, actualLine)
 	}
+}
+
+func compareSportLines(t *testing.T, expected *domain.SportLine, actual *domain.SportLine) {
+	assert.Equal(t, expected.Type, actual.Type)
+	assert.Equal(t, expected.Score, actual.Score)
 }
