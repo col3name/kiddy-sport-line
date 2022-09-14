@@ -2,14 +2,13 @@ package main
 
 import (
 	"github.com/col3name/lines/cmd/kiddy-line-processor/config"
-	"github.com/col3name/lines/pkg/common/application/errors"
+	"github.com/col3name/lines/data/migrations/pg"
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	commonPostgres "github.com/col3name/lines/pkg/common/infrastructure/postgres"
 	grpcUtil "github.com/col3name/lines/pkg/common/infrastructure/transport/grpc"
 	httpUtil "github.com/col3name/lines/pkg/common/infrastructure/transport/http"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service/sport-line"
 	domainQuery "github.com/col3name/lines/pkg/kiddy-line-processor/domain/query"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/adapter"
@@ -32,23 +31,24 @@ func main() {
 	sportLineQueryService := query.NewSportLineQueryService(conn, logger)
 	linesProviderAdapter := adapter.NewLinesProviderAdapter(conf.LinesProviderUrl, logger)
 	newSportLineUpdateService := sport_line.NewSportLinesUpdateService(conf.UpdatePeriod, linesProviderAdapter, unitOfWork)
+	migrationService := pg.NewMigrationService(sportLineQueryService, unitOfWork)
 
-	s := newMicroservice(conf, unitOfWork, logger, sportLineQueryService, newSportLineUpdateService)
+	s := newMicroservice(conf, logger, migrationService, sportLineQueryService, newSportLineUpdateService)
 	s.run()
 }
 
 type microservice struct {
 	conf                    *config.Config
 	logger                  loggerInterface.Logger
+	migration               pg.MigrationService
 	sportLineQueryService   domainQuery.SportLineQueryService
-	uow                     service.UnitOfWork
 	sportLinesUpdateService sport_line.SportLinesUpdateService
 }
 
 func newMicroservice(
 	conf *config.Config,
-	uow service.UnitOfWork,
 	logger loggerInterface.Logger,
+	migration pg.MigrationService,
 	sportLineQueryService domainQuery.SportLineQueryService,
 	sportLineUpdateService sport_line.SportLinesUpdateService,
 ) *microservice {
@@ -56,26 +56,27 @@ func newMicroservice(
 	return &microservice{
 		conf:                    conf,
 		logger:                  logger,
-		uow:                     uow,
+		migration:               migration,
 		sportLineQueryService:   sportLineQueryService,
 		sportLinesUpdateService: sportLineUpdateService,
 	}
 }
 
-func (s *microservice) performDbMigrationIfNeeded() error {
-	defaultSubscriptions := []commonDomain.SportType{commonDomain.Baseball}
-	_, err := s.sportLineQueryService.GetLinesBySportTypes(defaultSubscriptions)
-	if err == nil {
-		return nil
+func (s *microservice) run() {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	err := s.performDbMigrationIfNeeded()
+	if err != nil {
+		s.logger.Fatal(err)
 	}
-	if err != errors.ErrTableNotExist {
-		return err
-	}
+	go s.runHttpServer(&wg)
+	go s.runGrpcServer(&wg)
+	go s.runSpotLineUpdateWorkers()
+	wg.Wait()
+}
 
-	return s.uow.Execute(func(provider service.RepositoryProvider) error {
-		migrationRepo := provider.MigrationRepo()
-		return migrationRepo.Migrate()
-	})
+func (s *microservice) performDbMigrationIfNeeded() error {
+	return s.migration.MigrateIfNeeded()
 }
 
 func (s *microservice) runHttpServer(wg *sync.WaitGroup) {
@@ -106,6 +107,7 @@ func (s *microservice) runSpotLineUpdateWorkers() {
 
 func (s *microservice) runUpdateSportLineWorker(sportType commonDomain.SportType) {
 	sleepDuration := time.Duration(s.conf.UpdatePeriod) * time.Second
+
 	for {
 		err := s.sportLinesUpdateService.Update(sportType)
 		if err != nil {
@@ -113,17 +115,4 @@ func (s *microservice) runUpdateSportLineWorker(sportType commonDomain.SportType
 		}
 		time.Sleep(sleepDuration)
 	}
-}
-
-func (s *microservice) run() {
-	var wg sync.WaitGroup
-	wg.Add(2)
-	err := s.performDbMigrationIfNeeded()
-	if err != nil {
-		s.logger.Fatal(err)
-	}
-	go s.runHttpServer(&wg)
-	go s.runGrpcServer(&wg)
-	go s.runSpotLineUpdateWorkers()
-	wg.Wait()
 }
