@@ -7,7 +7,7 @@ import (
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	commonPostgres "github.com/col3name/lines/pkg/common/infrastructure/postgres"
-	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
+	httpUtil "github.com/col3name/lines/pkg/common/infrastructure/transport/http"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service/sport-line"
 	domainQuery "github.com/col3name/lines/pkg/kiddy-line-processor/domain/query"
@@ -16,9 +16,9 @@ import (
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres/repo"
 	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
+	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
 	"net"
-	"net/http"
 	"sync"
 	"time"
 )
@@ -68,13 +68,10 @@ func (s *microservice) performDbMigrationIfNeeded() error {
 
 func (s *microservice) runHttpServer(wg *sync.WaitGroup) {
 	defer wg.Done()
-	http.HandleFunc("/ready", netHttp.ReadyCheckHandler)
-
-	err := http.ListenAndServe(s.conf.HttpUrl, nil)
-	if err != nil {
-		s.logger.Fatal(err)
-		return
-	}
+	router := mux.NewRouter()
+	router.HandleFunc("/ready", httpUtil.ReadyCheckHandler)
+	handler := httpUtil.LogMiddleware(router, s.logger)
+	httpUtil.RunHttpServer(s.conf.HttpUrl, handler, s.logger)
 }
 
 func (s *microservice) runGrpcServer(wg *sync.WaitGroup) {

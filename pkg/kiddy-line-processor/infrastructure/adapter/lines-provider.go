@@ -7,7 +7,7 @@ import (
 	"github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure"
-	"github.com/col3name/lines/pkg/common/infrastructure/transport"
+	http2 "github.com/col3name/lines/pkg/common/infrastructure/transport/http"
 	"io"
 	"net/http"
 )
@@ -51,7 +51,7 @@ func NewLinesProviderAdapter(linesProviderUrl string, logger logger.Logger) *lin
 
 func (s linesProviderAdapter) GetLineBySport(sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
 	url := s.getLinesURL(sportType)
-	resp, err := transport.Get(url)
+	resp, err := http2.Get(url)
 	if err != nil {
 		return nil, infrastructure.ExternalError(s.logger, err)
 	}

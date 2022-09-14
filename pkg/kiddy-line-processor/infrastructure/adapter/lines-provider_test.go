@@ -4,7 +4,7 @@ import (
 	"errors"
 	appErr "github.com/col3name/lines/pkg/common/application/errors"
 	"github.com/col3name/lines/pkg/common/domain"
-	"github.com/col3name/lines/pkg/common/infrastructure/transport"
+	http2 "github.com/col3name/lines/pkg/common/infrastructure/transport/http"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/fake"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -228,7 +228,7 @@ func TestGetLines(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			transport.Client = &MockClient{DoFunc: test.input.doFunc}
+			http2.Client = &MockClient{DoFunc: test.input.doFunc}
 			adapter := NewLinesProviderAdapter("http://localhost:8000", fake.Logger{})
 			line, err := adapter.GetLineBySport(test.input.sportType)
 			expected := test.expected
