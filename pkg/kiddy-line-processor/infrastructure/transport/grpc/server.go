@@ -12,19 +12,6 @@ import (
 	"time"
 )
 
-func parseSportRequest(sports []string) []commonDomain.SportType {
-	result := make([]commonDomain.SportType, 3)
-
-	for _, sportType := range sports {
-		val, err := commonDomain.NewSportType(sportType)
-		if err == nil {
-			result = append(result, val)
-		}
-	}
-
-	return result
-}
-
 type Server struct {
 	pb.UnimplementedKiddyLineProcessorServer
 	subscriptionManager subscription.Service
@@ -67,7 +54,7 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 			errCh <- err
 			continue
 		}
-		sportsList := parseSportRequest(in.Sports)
+		sportsList := s.parseSportRequest(in.Sports)
 		if array.EmptyST(sportsList) {
 			s.logger.Println("Error in receiving message from client. :: ")
 			errCh <- err
@@ -79,6 +66,19 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 			UpdateIntervalSecond: in.IntervalInSecond,
 		})
 	}
+}
+
+func (s *Server) parseSportRequest(sports []string) []commonDomain.SportType {
+	result := make([]commonDomain.SportType, 3)
+
+	for _, sportType := range sports {
+		val, err := commonDomain.NewSportType(sportType)
+		if err == nil {
+			result = append(result, val)
+		}
+	}
+
+	return result
 }
 
 func (s *Server) sendDataToSubscribers(stream pb.KiddyLineProcessor_SubscribeOnSportsLinesServer, clientId int) {
