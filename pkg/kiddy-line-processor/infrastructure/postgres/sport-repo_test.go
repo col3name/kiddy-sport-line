@@ -126,9 +126,9 @@ func TestStore(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			mock, err := pgxmock.NewPool()
+			mock, err := getPgxMockPool(t)
 			if err != nil {
-				t.Errorf("an error '%s' was not expected when opening a stub database connection", err)
+				return
 			}
 			defer mock.Close()
 
@@ -291,9 +291,9 @@ func TestGetSportLines(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			mock, err := pgxmock.NewPool()
+			mock, err := getPgxMockPool(t)
 			if err != nil {
-				t.Errorf("an error '%s' was not expected when opening a stub database connection", err)
+				return
 			}
 			defer mock.Close()
 
@@ -312,6 +312,14 @@ func TestGetSportLines(t *testing.T) {
 			checkExpectationsWereMet(t, err, mock)
 		})
 	}
+}
+
+func getPgxMockPool(t *testing.T) (pgxmock.PgxPoolIface, error) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Errorf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	return mock, err
 }
 
 func checkExpectationsWereMet(t *testing.T, err error, mock pgxmock.PgxPoolIface) {
