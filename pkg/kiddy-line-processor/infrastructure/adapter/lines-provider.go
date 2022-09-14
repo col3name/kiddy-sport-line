@@ -8,7 +8,7 @@ import (
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure"
 	"github.com/col3name/lines/pkg/common/infrastructure/transport"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
@@ -50,7 +50,7 @@ func NewLinesProviderAdapter(linesProviderUrl string, logger logger.Logger) *lin
 }
 
 func (s linesProviderAdapter) GetLineBySport(sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
-	url := fmt.Sprintf("%s/api/v1/lines/%s", s.linesProviderUrl, sportType)
+	url := s.getLinesURL(sportType)
 	resp, err := transport.Get(url)
 	if err != nil {
 		return nil, infrastructure.ExternalError(s.logger, err)
@@ -58,17 +58,20 @@ func (s linesProviderAdapter) GetLineBySport(sportType commonDomain.SportType) (
 	return s.parseResp(resp, sportType)
 }
 
+func (s linesProviderAdapter) getLinesURL(sportType commonDomain.SportType) string {
+	return fmt.Sprintf("%s/api/v1/lines/%s", s.linesProviderUrl, sportType)
+}
+
 func (s *linesProviderAdapter) parseResp(resp *http.Response, sportType commonDomain.SportType) (*commonDomain.SportLine, error) {
 	if resp.StatusCode != http.StatusOK {
 		err := s.failedGetSportError(sportType, nil)
 		return nil, infrastructure.ExternalError(s.logger, err)
 	}
-	bytes, err := ioutil.ReadAll(resp.Body)
+	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		err = s.failedGetSportError(sportType, err)
 		return nil, infrastructure.InternalError(s.logger, err)
 	}
-
 	defer resp.Body.Close()
 
 	sportLine, err := s.parseGetLinesResponse(bytes, sportType)
