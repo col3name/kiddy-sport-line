@@ -82,7 +82,7 @@ func (s *microservice) performDbMigrationIfNeeded() error {
 func (s *microservice) runHttpServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	httpUtil.RunHttpServer(s.conf.HttpUrl, router.Router(), s.logger)
+	httpUtil.RunHttpServer(s.conf.HttpUrl, router.Router(nil), s.logger)
 }
 
 func (s *microservice) runGrpcServer(wg *sync.WaitGroup) {
