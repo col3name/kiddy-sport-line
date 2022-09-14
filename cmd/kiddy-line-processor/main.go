@@ -108,10 +108,14 @@ func (s *microservice) runUpdateSportLineWorker(sportType commonDomain.SportType
 
 	var err error
 	for {
-		err = s.sportLinesUpdateService.Update(sportType)
-		if err != nil {
-			s.logger.Error(err)
-		}
+		s.updateSportLine(sportType, err)
 		time.Sleep(sleepDuration)
+	}
+}
+
+func (s *microservice) updateSportLine(sportType commonDomain.SportType, err error) {
+	err = s.sportLinesUpdateService.Update(sportType)
+	if err != nil {
+		s.logger.Error(err)
 	}
 }
