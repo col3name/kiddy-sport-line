@@ -119,7 +119,6 @@ func (s *microservice) updateSportLineWorker(sportType commonDomain.SportType) {
 		}
 
 		err = s.uow.Execute(job)
-		//err = s.sportLineRepo.Store(sportLine)
 		if err != nil {
 			s.logger.Error(err)
 		}
