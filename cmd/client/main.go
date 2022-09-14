@@ -5,10 +5,9 @@ import (
 	"fmt"
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/common/infrastructure/env"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
-	str "github.com/col3name/lines/pkg/common/infrastructure/util/stringss"
 	"io"
-	"os"
 	"time"
 
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
@@ -18,10 +17,7 @@ import (
 
 func main() {
 	logger := logrusLogger.New()
-	kiddyGrpcUrl := os.Getenv("KIDDY_LINES_PROCESSOR_GRPC_URL")
-	if str.Empty(kiddyGrpcUrl) {
-		kiddyGrpcUrl = "localhost:50051"
-	}
+	kiddyGrpcUrl := env.GetEnvVariable("KIDDY_LINES_PROCESSOR_GRPC_URL", "localhost:50051")
 
 	conn, err := grpc.Dial(kiddyGrpcUrl, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -102,7 +98,7 @@ func (c *clientHandle) receiveMessage() bool {
 		return false
 	}
 	if err != nil {
-		c.logger.Fatal("client.RouteChat failed: ", err)
+		c.logger.Fatal("client.RouteChat failed:", err)
 	}
 	c.printSports(recv)
 	return true
