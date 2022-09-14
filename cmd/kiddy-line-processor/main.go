@@ -17,7 +17,6 @@ import (
 	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/http/router"
-	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
 	"sync"
 	"time"
@@ -107,8 +106,9 @@ func (s *microservice) runSpotLineUpdateWorkers() {
 func (s *microservice) runUpdateSportLineWorker(sportType commonDomain.SportType) {
 	sleepDuration := time.Duration(s.conf.UpdatePeriod) * time.Second
 
+	var err error
 	for {
-		err := s.sportLinesUpdateService.Update(sportType)
+		err = s.sportLinesUpdateService.Update(sportType)
 		if err != nil {
 			s.logger.Error(err)
 		}
