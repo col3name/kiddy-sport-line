@@ -7,6 +7,7 @@ import (
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	commonPostgres "github.com/col3name/lines/pkg/common/infrastructure/postgres"
+	grpcUtil "github.com/col3name/lines/pkg/common/infrastructure/transport/grpc"
 	httpUtil "github.com/col3name/lines/pkg/common/infrastructure/transport/http"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service/sport-line"
@@ -90,18 +91,12 @@ func (s *microservice) runGrpcServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	sportLineService := sport_line.NewSportLineService(s.sportLineQueryService)
 
-	grpcSrv := grpc.NewServer()
 	server := grpcServer.NewServer(sportLineService, s.logger)
+
+	grpcSrv := grpc.NewServer()
 	pb.RegisterKiddyLineProcessorServer(grpcSrv, server)
 
-	lis, err := net.Listen("tcp", s.conf.GrpcUrl)
-	if err != nil {
-		s.logger.Fatalf("failed to listen: %v", err)
-	}
-	s.logger.Info("server listening at", lis.Addr().String())
-	if err = grpcSrv.Serve(lis); err != nil {
-		s.logger.Fatal("failed to serve: ", err)
-	}
+	grpcUtil.RunGrpcServer(s.logger, s.conf.GrpcUrl, grpcSrv)
 }
 
 func (s *microservice) runSpotLineUpdateWorkers() {
