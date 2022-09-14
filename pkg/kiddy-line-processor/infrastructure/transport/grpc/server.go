@@ -4,7 +4,8 @@ import (
 	"github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/util/array"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/sport-line"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/subscription"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	"io"
 	"math/rand"
@@ -26,13 +27,13 @@ func parseSportRequest(sports []string) []commonDomain.SportType {
 
 type Server struct {
 	pb.UnimplementedKiddyLineProcessorServer
-	subscriptionManager application.SubscriptionService
+	subscriptionManager subscription.Service
 	logger              logger.Logger
 }
 
-func NewServer(sportLineService application.SportLineService, logger logger.Logger) *Server {
+func NewServer(sportLineService sport_line.SportLineService, logger logger.Logger) *Server {
 	return &Server{
-		subscriptionManager: application.NewSubscriptionManager(sportLineService, logger),
+		subscriptionManager: subscription.NewSubscriptionManager(sportLineService, logger),
 		logger:              logger,
 	}
 }
@@ -72,7 +73,7 @@ func (s *Server) receiveSubscriptions(stream pb.KiddyLineProcessor_SubscribeOnSp
 			errCh <- err
 			continue
 		}
-		s.subscriptionManager.PushMessage(&application.SubscriptionMessageDTO{
+		s.subscriptionManager.PushMessage(&subscription.MessageToSubscribeDTO{
 			ClientId:             clientId,
 			Sports:               sportsList,
 			UpdateIntervalSecond: in.IntervalInSecond,

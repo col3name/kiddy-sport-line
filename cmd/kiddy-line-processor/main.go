@@ -2,36 +2,39 @@ package main
 
 import (
 	"context"
+	"github.com/col3name/lines/cmd/kiddy-line-processor/config"
 	"github.com/col3name/lines/pkg/common/application/errors"
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	commonPostgres "github.com/col3name/lines/pkg/common/infrastructure/postgres"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
-	str "github.com/col3name/lines/pkg/common/util/stringss"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/application"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/domain"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/sport-line"
+	domainQuery "github.com/col3name/lines/pkg/kiddy-line-processor/domain/query"
+	domainRepo "github.com/col3name/lines/pkg/kiddy-line-processor/domain/repo"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/adapter"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres/query"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres/repo"
 	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
 	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
 	"google.golang.org/grpc"
 	"net"
 	"net/http"
-	"os"
-	"strconv"
 	"sync"
 	"time"
 )
 
 func main() {
 	logger := logrusLogger.New()
-	conf := setupConfig(logger)
-	conn := setupDbConnection(conf.DbUrl, logger)
-	sportLineRepo := postgres.NewSportLineRepository(conn, logger)
-	err := performDbMigrationIfNeeded(sportLineRepo, conn, logger)
+	conf := config.SetupConfig(logger)
+	conn := commonPostgres.SetupDbConnection(conf.DbUrl, logger)
+
+	sportLineRepo := repo.NewSportLineRepository(conn, logger)
+	sportLineQueryService := query.NewSportLineQueryService(conn, logger)
+
+	err := performDbMigrationIfNeeded(sportLineQueryService, conn, logger)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -59,7 +62,7 @@ const CreateSportLinesSql = `BEGIN TRANSACTION;
 					   ('4b9d52e2-1473-4cdb-bba8-c1c1cac933f5', 'football', 1.0);
 				END ;`
 
-func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostgres.PgxPoolIface, logger loggerInterface.Logger) error {
+func performDbMigrationIfNeeded(sportLineRepo domainQuery.SportLineQueryService, conn commonPostgres.PgxPoolIface, logger loggerInterface.Logger) error {
 	defaultSubscriptions := []commonDomain.SportType{commonDomain.Baseball}
 	_, err := sportLineRepo.GetLinesBySportTypes(defaultSubscriptions)
 	if err == nil {
@@ -79,73 +82,12 @@ func performDbMigrationIfNeeded(sportLineRepo domain.SportRepo, conn commonPostg
 	return err
 }
 
-type config struct {
-	UpdatePeriod     int
-	HttpUrl          string
-	GrpcUrl          string
-	LinesProviderUrl string
-	LogLevel         string
-	DbUrl            string
-}
-
-func setupConfig(logger loggerInterface.Logger) *config {
-	updatePeriod := getEnvVariableInt("UPDATE_INTERVAL", 1, logger)
-	linesProviderUrl := getEnvVariable("LINES_PROVIDER_URL", "http://localhost:8000")
-	dbURL := getEnvVariable("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/lines")
-	httpUrl := getEnvVariable("HTTP_URL", ":3333")
-	grpcUrl := getEnvVariable("GRPC_URL", ":50051")
-
-	return &config{
-		UpdatePeriod:     updatePeriod,
-		HttpUrl:          httpUrl,
-		GrpcUrl:          grpcUrl,
-		LinesProviderUrl: linesProviderUrl,
-		DbUrl:            dbURL,
-		LogLevel:         "",
-	}
-}
-
-func getEnvVariableInt(key string, defaultValue int, logger loggerInterface.Logger) int {
-	defaultVal := strconv.Itoa(defaultValue)
-	valueString := getEnvVariable(key, defaultVal)
-	value, err := strconv.Atoi(valueString)
-	msg := key + " must be positive integer. Set default value: " + defaultVal
-	if err != nil {
-		logger.Error(msg)
-		return defaultValue
-	} else if value < 1 {
-		logger.Error(msg)
-		return defaultValue
-	}
-
-	return value
-}
-
-func getEnvVariable(key, defaultVal string) string {
-	value := os.Getenv(key)
-	if str.Empty(value) {
-		value = defaultVal
-	}
-	return value
-}
-
-func setupDbConnection(dbUrl string, logger loggerInterface.Logger) commonPostgres.PgxPoolIface {
-	poolConfig, err := pgxpool.ParseConfig(dbUrl)
-	if err != nil {
-		logger.Fatal("Unable to parse DATABASE_URL", "error", err)
-	}
-	db, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
-	if err != nil {
-		logger.Fatal("Unable to create connection pool", "error", err)
-	}
-	return db
-}
-
 type service struct {
-	linesProviderAdapter adapter.LinesProviderAdapter
-	conf                 *config
-	sportLineRepo        *postgres.SportRepoImpl
-	logger               loggerInterface.Logger
+	conf                  *config.Config
+	logger                loggerInterface.Logger
+	sportLineRepo         domainRepo.SportLineRepo
+	linesProviderAdapter  adapter.LinesProviderAdapter
+	sportLineQueryService domainQuery.SportLineQueryService
 }
 
 func (s *service) runHttpServer(wg *sync.WaitGroup) {
@@ -161,14 +103,16 @@ func (s *service) runHttpServer(wg *sync.WaitGroup) {
 
 func (s *service) runGrpcServer(wg *sync.WaitGroup) {
 	defer wg.Done()
+	sportLineService := sport_line.NewSportLineService(s.sportLineQueryService)
+
+	grpcSrv := grpc.NewServer()
+	server := grpcServer.NewServer(sportLineService, s.logger)
+	pb.RegisterKiddyLineProcessorServer(grpcSrv, server)
+
 	lis, err := net.Listen("tcp", s.conf.GrpcUrl)
 	if err != nil {
 		s.logger.Fatalf("failed to listen: %v", err)
 	}
-	grpcSrv := grpc.NewServer()
-	sportLineService := application.NewSportLineService(s.sportLineRepo)
-	server := grpcServer.NewServer(sportLineService, s.logger)
-	pb.RegisterKiddyLineProcessorServer(grpcSrv, server)
 	s.logger.Info("server listening at", lis.Addr().String())
 	if err = grpcSrv.Serve(lis); err != nil {
 		s.logger.Fatal("failed to serve: ", err)

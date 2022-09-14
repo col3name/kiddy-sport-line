@@ -1,8 +1,9 @@
-package application
+package sport_line
 
 import (
 	"github.com/col3name/lines/pkg/common/application/errors"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/domain/model"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -28,7 +29,7 @@ func (m *mockDB) Store(model *commonDomain.SportLine) error {
 
 type isChangeInput struct {
 	exist  bool
-	subMap SportTypeMap
+	subMap model.SportTypeMap
 	sports []commonDomain.SportType
 }
 
@@ -68,7 +69,7 @@ func TestIsChanged(t *testing.T) {
 			mockDB: db,
 			input: &isChangeInput{
 				exist: false,
-				subMap: SportTypeMap(map[commonDomain.SportType]float32{
+				subMap: model.SportTypeMap(map[commonDomain.SportType]float32{
 					commonDomain.Baseball: 1.0,
 				}),
 				sports: []commonDomain.SportType{},
@@ -80,7 +81,7 @@ func TestIsChanged(t *testing.T) {
 			mockDB: db,
 			input: &isChangeInput{
 				exist:  false,
-				subMap: SportTypeMap(map[commonDomain.SportType]float32{}),
+				subMap: model.SportTypeMap(map[commonDomain.SportType]float32{}),
 				sports: []commonDomain.SportType{commonDomain.Baseball},
 			},
 			expected: true,
@@ -90,7 +91,7 @@ func TestIsChanged(t *testing.T) {
 			mockDB: db,
 			input: &isChangeInput{
 				exist: true,
-				subMap: SportTypeMap(map[commonDomain.SportType]float32{
+				subMap: model.SportTypeMap(map[commonDomain.SportType]float32{
 					commonDomain.Baseball: 1.0,
 					commonDomain.Soccer:   1.5,
 				}),
@@ -103,7 +104,7 @@ func TestIsChanged(t *testing.T) {
 			mockDB: db,
 			input: &isChangeInput{
 				exist: true,
-				subMap: SportTypeMap(map[commonDomain.SportType]float32{
+				subMap: model.SportTypeMap(map[commonDomain.SportType]float32{
 					commonDomain.Soccer: 1.0,
 				}),
 				sports: []commonDomain.SportType{commonDomain.Baseball},
@@ -115,7 +116,7 @@ func TestIsChanged(t *testing.T) {
 			mockDB: db,
 			input: &isChangeInput{
 				exist: true,
-				subMap: SportTypeMap(map[commonDomain.SportType]float32{
+				subMap: model.SportTypeMap(map[commonDomain.SportType]float32{
 					commonDomain.Baseball: 1.0,
 				}),
 				sports: []commonDomain.SportType{commonDomain.Baseball},
@@ -136,7 +137,7 @@ func TestIsChanged(t *testing.T) {
 type CalculateInput struct {
 	isNeedDelta bool
 	types       []commonDomain.SportType
-	subs        *ClientSubscription
+	subs        *model.ClientSubscription
 }
 
 type CalculateExpected struct {
@@ -173,7 +174,7 @@ func TestCalculates(t *testing.T) {
 			input: &CalculateInput{
 				isNeedDelta: false,
 				types:       nil,
-				subs:        &ClientSubscription{Sports: nil},
+				subs:        &model.ClientSubscription{Sports: nil},
 			},
 			mockDB: &mockDB{
 				FakeGetSportLines: func(types []commonDomain.SportType) ([]*commonDomain.SportLine, error) {
@@ -190,7 +191,7 @@ func TestCalculates(t *testing.T) {
 			input: &CalculateInput{
 				isNeedDelta: false,
 				types:       nil,
-				subs:        &ClientSubscription{Sports: nil},
+				subs:        &model.ClientSubscription{Sports: nil},
 			},
 			mockDB: &mockDB{
 				FakeGetSportLines: func(types []commonDomain.SportType) ([]*commonDomain.SportLine, error) {
@@ -207,7 +208,7 @@ func TestCalculates(t *testing.T) {
 			input: &CalculateInput{
 				isNeedDelta: false,
 				types:       []commonDomain.SportType{commonDomain.Baseball},
-				subs:        &ClientSubscription{Sports: make(SportTypeMap, 0)},
+				subs:        &model.ClientSubscription{Sports: make(model.SportTypeMap, 0)},
 			},
 			mockDB: &mockDB{
 				FakeGetSportLines: func(types []commonDomain.SportType) ([]*commonDomain.SportLine, error) {
@@ -224,7 +225,7 @@ func TestCalculates(t *testing.T) {
 			input: &CalculateInput{
 				isNeedDelta: true,
 				types:       []commonDomain.SportType{commonDomain.Baseball},
-				subs: &ClientSubscription{Sports: SportTypeMap{
+				subs: &model.ClientSubscription{Sports: model.SportTypeMap{
 					commonDomain.Baseball: 1.5,
 				}},
 			},

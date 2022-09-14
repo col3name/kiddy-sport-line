@@ -1,37 +1,34 @@
-package application
+package subscription
 
 import (
 	"github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/util/array"
 	"github.com/col3name/lines/pkg/common/util/times"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/sport-line"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/domain/model"
 	"sync"
-	"time"
 )
 
-type SubscriptionService interface {
-	Subscribe(responseSender responseSender, clientId int) bool
-	PushMessage(dto *SubscriptionMessageDTO)
+type Service interface {
+	Subscribe(responseSender service.ResponseSenderService, clientId int) bool
+	PushMessage(dto *MessageToSubscribeDTO)
 	Unsubscribe(clientId int)
 }
 
-type ClientSubscription struct {
-	Sports SportTypeMap
-	Task   *time.Ticker
-}
-
 type subscriptionServiceImpl struct {
-	subscriptions    map[int]*ClientSubscription
+	subscriptions    map[int]*model.ClientSubscription
 	messageQueue     *MessageQueue
-	sportLineService SportLineService
+	sportLineService sport_line.SportLineService
 	timesTicker      times.Ticker
 	logger           logger.Logger
 	mu               sync.Mutex
 }
 
-func NewSubscriptionManager(sportLineService SportLineService, logger logger.Logger) *subscriptionServiceImpl {
+func NewSubscriptionManager(sportLineService sport_line.SportLineService, logger logger.Logger) *subscriptionServiceImpl {
 	return &subscriptionServiceImpl{
-		subscriptions:    make(map[int]*ClientSubscription, 0),
+		subscriptions:    make(map[int]*model.ClientSubscription, 0),
 		messageQueue:     NewMessageQueue(),
 		sportLineService: sportLineService,
 		logger:           logger,
@@ -39,7 +36,7 @@ func NewSubscriptionManager(sportLineService SportLineService, logger logger.Log
 	}
 }
 
-func (s *subscriptionServiceImpl) Subscribe(responseSender responseSender, clientId int) bool {
+func (s *subscriptionServiceImpl) Subscribe(responseSender service.ResponseSenderService, clientId int) bool {
 	if responseSender == nil {
 		return false
 	}
@@ -50,7 +47,7 @@ func (s *subscriptionServiceImpl) Subscribe(responseSender responseSender, clien
 	return s.addNotifySubscriberTask(responseSender, subMsg)
 }
 
-func (s *subscriptionServiceImpl) PushMessage(dto *SubscriptionMessageDTO) {
+func (s *subscriptionServiceImpl) PushMessage(dto *MessageToSubscribeDTO) {
 	if !s.isValidMessage(dto) {
 		return
 	}
@@ -68,19 +65,19 @@ func (s *subscriptionServiceImpl) Unsubscribe(clientId int) {
 	delete(s.subscriptions, clientId)
 }
 
-func (s *subscriptionServiceImpl) isUserAuthorOfMessage(subMsg *SubscriptionMessageDTO, clientId int) bool {
+func (s *subscriptionServiceImpl) isUserAuthorOfMessage(subMsg *MessageToSubscribeDTO, clientId int) bool {
 	return subMsg == nil || (subMsg.ClientId != clientId)
 }
 
-func (s *subscriptionServiceImpl) isValidMessage(dto *SubscriptionMessageDTO) bool {
+func (s *subscriptionServiceImpl) isValidMessage(dto *MessageToSubscribeDTO) bool {
 	return !array.EmptyST(dto.Sports) && dto.ClientId >= 0 && dto.UpdateIntervalSecond >= 1
 }
 
-func (s *subscriptionServiceImpl) isExistTask(ok bool, sub *ClientSubscription) bool {
+func (s *subscriptionServiceImpl) isExistTask(ok bool, sub *model.ClientSubscription) bool {
 	return !ok || (ok && sub.Task == nil)
 }
 
-func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender responseSender, subMessage *SubscriptionMessageDTO) bool {
+func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender service.ResponseSenderService, subMessage *MessageToSubscribeDTO) bool {
 	clientId := subMessage.ClientId
 	sports := subMessage.Sports
 	if array.EmptyST(sports) {
@@ -103,7 +100,7 @@ func (s *subscriptionServiceImpl) addNotifySubscriberTask(responseSender respons
 	return false
 }
 
-func (s *subscriptionServiceImpl) addNotifySubscriberPeriodically(sender responseSender, subMsg *SubscriptionMessageDTO) {
+func (s *subscriptionServiceImpl) addNotifySubscriberPeriodically(sender service.ResponseSenderService, subMsg *MessageToSubscribeDTO) {
 	clientSub := s.initClientSubscription(subMsg)
 	fn := s.updateSportLineFn(sender, subMsg)
 	fn(false)
@@ -113,7 +110,7 @@ func (s *subscriptionServiceImpl) addNotifySubscriberPeriodically(sender respons
 	s.messageQueue.Pop()
 }
 
-func (s *subscriptionServiceImpl) updateSportLineFn(sender responseSender, subMsg *SubscriptionMessageDTO) func(bool) {
+func (s *subscriptionServiceImpl) updateSportLineFn(sender service.ResponseSenderService, subMsg *MessageToSubscribeDTO) func(bool) {
 	return func(isNeedDelta bool) {
 		s.mu.Lock()
 		subscription := s.subscriptions[subMsg.ClientId]
@@ -139,36 +136,18 @@ func (s *subscriptionServiceImpl) isSubChanged(clientId int, sports []commonDoma
 
 const DefaultScore = 1.0
 
-func (s *subscriptionServiceImpl) initClientSubscription(msg *SubscriptionMessageDTO) *ClientSubscription {
-	subToSports := make(SportTypeMap, 0)
+func (s *subscriptionServiceImpl) initClientSubscription(msg *MessageToSubscribeDTO) *model.ClientSubscription {
+	subToSports := make(model.SportTypeMap, 0)
 
 	for _, sportType := range msg.Sports {
 		subToSports[sportType] = DefaultScore
 	}
 
-	sub := &ClientSubscription{
-		Sports: subToSports,
-		Task:   nil,
-	}
+	sub := &model.ClientSubscription{Sports: subToSports, Task: nil}
+
 	s.mu.Lock()
 	s.subscriptions[msg.ClientId] = sub
 	s.mu.Unlock()
+
 	return sub
-}
-
-func (s *sportLineServiceImpl) calculateLineOfSports(lines []*commonDomain.SportLine, isNeedDelta bool, subs *ClientSubscription) []*commonDomain.SportLine {
-	for i, line := range lines {
-		s.calculateLine(line, isNeedDelta, subs)
-		lines[i] = line
-	}
-
-	return lines
-}
-
-func (s *sportLineServiceImpl) calculateLine(line *commonDomain.SportLine, isNeedDelta bool, subs *ClientSubscription) {
-	sportType := line.Type
-	if isNeedDelta {
-		line.Score = line.Score - subs.Sports[sportType]
-	}
-	subs.Sports[sportType] = line.Score
 }

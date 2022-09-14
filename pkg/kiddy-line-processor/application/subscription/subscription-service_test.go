@@ -1,9 +1,12 @@
-package application
+package subscription
 
 import (
 	"errors"
 	"github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/fake"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/sport-line"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/domain/model"
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
@@ -12,7 +15,7 @@ import (
 
 type expectedPushMessage struct {
 	queueSize int
-	msg       *SubscriptionMessageDTO
+	msg       *MessageToSubscribeDTO
 }
 
 func getFieldValue(object interface{}, fieldName string) *reflect.Value {
@@ -28,7 +31,7 @@ func getFieldValue(object interface{}, fieldName string) *reflect.Value {
 	return nil
 }
 
-func compareSubscriptionMessageDTO(t *testing.T, lhs, rhs *SubscriptionMessageDTO) {
+func compareSubscriptionMessageDTO(t *testing.T, lhs, rhs *MessageToSubscribeDTO) {
 	assert.Equal(t, lhs.UpdateIntervalSecond, rhs.UpdateIntervalSecond)
 	assert.Equal(t, lhs.ClientId, rhs.ClientId)
 	assert.Equal(t, len(lhs.Sports), len(rhs.Sports))
@@ -37,7 +40,7 @@ func compareSubscriptionMessageDTO(t *testing.T, lhs, rhs *SubscriptionMessageDT
 	}
 }
 
-func compareSports(t *testing.T, expected, actual SportTypeMap) {
+func compareSports(t *testing.T, expected, actual model.SportTypeMap) {
 	assert.Equal(t, len(expected), len(actual))
 	for sportType, line := range actual {
 		expectedLine, ok := expected[sportType]
@@ -48,12 +51,12 @@ func compareSports(t *testing.T, expected, actual SportTypeMap) {
 
 var testsCaseForPushMessage = []struct {
 	name     string
-	input    *SubscriptionMessageDTO
+	input    *MessageToSubscribeDTO
 	expected *expectedPushMessage
 }{
 	{
 		name: "empty sports",
-		input: &SubscriptionMessageDTO{
+		input: &MessageToSubscribeDTO{
 			ClientId:             1,
 			Sports:               []domain.SportType{},
 			UpdateIntervalSecond: 1,
@@ -62,7 +65,7 @@ var testsCaseForPushMessage = []struct {
 	},
 	{
 		name: "invalid client id",
-		input: &SubscriptionMessageDTO{
+		input: &MessageToSubscribeDTO{
 			ClientId:             0,
 			Sports:               []domain.SportType{},
 			UpdateIntervalSecond: 1,
@@ -71,7 +74,7 @@ var testsCaseForPushMessage = []struct {
 	},
 	{
 		name: "negative client id",
-		input: &SubscriptionMessageDTO{
+		input: &MessageToSubscribeDTO{
 			ClientId:             -1,
 			Sports:               []domain.SportType{},
 			UpdateIntervalSecond: 1,
@@ -80,7 +83,7 @@ var testsCaseForPushMessage = []struct {
 	},
 	{
 		name: "update interval < 1",
-		input: &SubscriptionMessageDTO{
+		input: &MessageToSubscribeDTO{
 			ClientId:             -1,
 			Sports:               []domain.SportType{},
 			UpdateIntervalSecond: 1,
@@ -89,7 +92,7 @@ var testsCaseForPushMessage = []struct {
 	},
 	{
 		name: "update interval < 1",
-		input: &SubscriptionMessageDTO{
+		input: &MessageToSubscribeDTO{
 			ClientId:             -1,
 			Sports:               []domain.SportType{},
 			UpdateIntervalSecond: 1,
@@ -98,13 +101,13 @@ var testsCaseForPushMessage = []struct {
 	},
 	{
 		name: "valid sub message",
-		input: &SubscriptionMessageDTO{
+		input: &MessageToSubscribeDTO{
 			ClientId:             1,
 			Sports:               []domain.SportType{domain.Baseball},
 			UpdateIntervalSecond: 1,
 		},
 		expected: &expectedPushMessage{queueSize: 1,
-			msg: &SubscriptionMessageDTO{
+			msg: &MessageToSubscribeDTO{
 				ClientId:             1,
 				Sports:               []domain.SportType{domain.Baseball},
 				UpdateIntervalSecond: 1,
@@ -129,18 +132,18 @@ func TestPushMessage(t *testing.T) {
 }
 
 type MockLinesService struct {
-	FakeCalculate func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error)
-	FakeIsChanged func(exist bool, subscriptionMap SportTypeMap, newValue []domain.SportType) bool
+	FakeCalculate func(sports []domain.SportType, isNeedDelta bool, subs *model.ClientSubscription) ([]*domain.SportLine, error)
+	FakeIsChanged func(exist bool, subscriptionMap model.SportTypeMap, newValue []domain.SportType) bool
 }
 
-func (m *MockLinesService) Calculate(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
+func (m *MockLinesService) Calculate(sports []domain.SportType, isNeedDelta bool, subs *model.ClientSubscription) ([]*domain.SportLine, error) {
 	if m.FakeCalculate == nil {
 		return nil, nil
 	}
 	return m.FakeCalculate(sports, isNeedDelta, subs)
 }
 
-func (m *MockLinesService) IsSubscriptionChanged(exist bool, subscriptionMap SportTypeMap, subscribeToSports []domain.SportType) bool {
+func (m *MockLinesService) IsSubscriptionChanged(exist bool, subscriptionMap model.SportTypeMap, subscribeToSports []domain.SportType) bool {
 	if m.FakeIsChanged == nil {
 		return false
 	}
@@ -148,14 +151,14 @@ func (m *MockLinesService) IsSubscriptionChanged(exist bool, subscriptionMap Spo
 }
 
 type inputUnsubscribeClient struct {
-	subscriptions map[int]*ClientSubscription
+	subscriptions map[int]*model.ClientSubscription
 	clientId      int
 }
 
 type expectedUnsubscribeClient struct {
 	exist             bool
 	subscriptionsSize int
-	subscription      *ClientSubscription
+	subscription      *model.ClientSubscription
 }
 
 func compareSubscriptionManager(t *testing.T, expected *expectedUnsubscribeClient, input *inputUnsubscribeClient, manager *subscriptionServiceImpl) {
@@ -167,7 +170,7 @@ func compareSubscriptionManager(t *testing.T, expected *expectedUnsubscribeClien
 	compareClientSubscription(t, expected.subscription, actualSubscription)
 }
 
-func compareClientSubscription(t *testing.T, expectSubscription, actualSubscription *ClientSubscription) {
+func compareClientSubscription(t *testing.T, expectSubscription, actualSubscription *model.ClientSubscription) {
 	if expectSubscription == nil {
 		assert.True(t, actualSubscription == nil)
 		return
@@ -187,7 +190,7 @@ var testsCaseForUnsubscribeClient = []struct {
 	{
 		name: "not exist client",
 		input: &inputUnsubscribeClient{
-			subscriptions: map[int]*ClientSubscription{},
+			subscriptions: map[int]*model.ClientSubscription{},
 			clientId:      1,
 		},
 		expected: &expectedUnsubscribeClient{
@@ -199,7 +202,7 @@ var testsCaseForUnsubscribeClient = []struct {
 	{
 		name: "not exist client",
 		input: &inputUnsubscribeClient{
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {
 					Sports: map[domain.SportType]float32{domain.Baseball: 1.0},
 					Task:   time.NewTicker(1),
@@ -251,10 +254,10 @@ func (m *mockResponseSender) Send(sports []*domain.SportLine) error {
 
 type inputSubscribe struct {
 	clientId         int
-	responseSender   responseSender
+	responseSender   service.ResponseSenderService
 	messageQueue     *MessageQueue
-	sportLineService SportLineService
-	subscriptions    map[int]*ClientSubscription
+	sportLineService sport_line.SportLineService
+	subscriptions    map[int]*model.ClientSubscription
 }
 
 type expectedSubscribe struct {
@@ -262,7 +265,7 @@ type expectedSubscribe struct {
 	subscribedOk            bool
 	messageQueue            *MessageQueue
 	responseSenderCalled    bool
-	subscriptions           map[int]*ClientSubscription
+	subscriptions           map[int]*model.ClientSubscription
 	responseSenderCountCall int64
 }
 
@@ -305,7 +308,7 @@ func compareMessageQueue(t *testing.T, expectedSize int, expectedQueue, actualQu
 	}
 }
 
-func compareDeepQueueData(t *testing.T, expected, actual []*SubscriptionMessageDTO) {
+func compareDeepQueueData(t *testing.T, expected, actual []*MessageToSubscribeDTO) {
 	for j, expectedDto := range expected {
 		compareSubscriptionMessageDTO(t, expectedDto, actual[j])
 	}
@@ -320,7 +323,7 @@ func compareResponseSenderCalled(t *testing.T, expected *expectedSubscribe, inpu
 	}
 }
 
-func compareSubscriptions(t *testing.T, expectedSubsMap, actualSubsMap map[int]*ClientSubscription) {
+func compareSubscriptions(t *testing.T, expectedSubsMap, actualSubsMap map[int]*model.ClientSubscription) {
 	if expectedSubsMap == nil {
 		return
 	}
@@ -376,7 +379,7 @@ var testsCaseForSubscribe = []struct {
 				FakeIsChanged: nil,
 			},
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 1, Sports: []domain.SportType{}, UpdateIntervalSecond: 1},
 				},
 			},
@@ -386,9 +389,9 @@ var testsCaseForSubscribe = []struct {
 			subscribedOk:         false,
 			responseSenderCalled: false,
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{},
+				data: []*MessageToSubscribeDTO{},
 			},
-			subscriptions: map[int]*ClientSubscription{},
+			subscriptions: map[int]*model.ClientSubscription{},
 		},
 	},
 	{
@@ -403,7 +406,7 @@ var testsCaseForSubscribe = []struct {
 				FakeIsChanged: nil,
 			},
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 2, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
 				},
 			},
@@ -412,12 +415,12 @@ var testsCaseForSubscribe = []struct {
 			messageQueueSize: 1,
 			subscribedOk:     false,
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 2, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
 				},
 			},
 			responseSenderCalled: false,
-			subscriptions:        map[int]*ClientSubscription{},
+			subscriptions:        map[int]*model.ClientSubscription{},
 		},
 	},
 	{
@@ -431,18 +434,18 @@ var testsCaseForSubscribe = []struct {
 				}},
 			sportLineService: &MockLinesService{
 				FakeCalculate: nil,
-				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+				FakeIsChanged: func(exist bool, r model.SportTypeMap, newValue []domain.SportType) bool {
 					return false
 				},
 			},
 
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
 				2: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
 			},
@@ -451,11 +454,11 @@ var testsCaseForSubscribe = []struct {
 			messageQueueSize: 1,
 			subscribedOk:     false,
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
 				2: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
 			},
@@ -476,7 +479,7 @@ var testsCaseForSubscribe = []struct {
 				FakeIsChanged: nil,
 			},
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
@@ -486,7 +489,7 @@ var testsCaseForSubscribe = []struct {
 			messageQueueSize: 1,
 			subscribedOk:     true,
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
@@ -525,17 +528,17 @@ var testsCaseForSubscribe = []struct {
 					return nil
 				}},
 			sportLineService: &MockLinesService{
-				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+				FakeIsChanged: func(exist bool, r model.SportTypeMap, newValue []domain.SportType) bool {
 					return false
 				},
 			},
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
 			},
 		},
@@ -543,12 +546,12 @@ var testsCaseForSubscribe = []struct {
 			messageQueueSize: 1,
 			subscribedOk:     false,
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
 			responseSenderCalled: false,
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
 			},
 		},
@@ -564,24 +567,24 @@ var testsCaseForSubscribe = []struct {
 					return nil
 				}},
 			sportLineService: &MockLinesService{
-				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
+				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *model.ClientSubscription) ([]*domain.SportLine, error) {
 					return []*domain.SportLine{
 						{Score: 1.0, Type: domain.Baseball},
 						{Score: 1.5, Type: domain.Soccer},
 					}, nil
 				},
-				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+				FakeIsChanged: func(exist bool, r model.SportTypeMap, newValue []domain.SportType) bool {
 					return true
 				},
 			},
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
 					{ClientId: 1, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
 			},
 		},
@@ -589,13 +592,13 @@ var testsCaseForSubscribe = []struct {
 			messageQueueSize: 1,
 			subscribedOk:     true,
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
 			responseSenderCountCall: 2,
 			responseSenderCalled:    true,
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
 			},
 		},
@@ -610,21 +613,21 @@ var testsCaseForSubscribe = []struct {
 					return nil
 				}},
 			sportLineService: &MockLinesService{
-				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
+				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *model.ClientSubscription) ([]*domain.SportLine, error) {
 					return nil, errors.New("fake error")
 				},
-				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+				FakeIsChanged: func(exist bool, r model.SportTypeMap, newValue []domain.SportType) bool {
 					return true
 				},
 			},
 
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
 			},
 		},
@@ -632,12 +635,12 @@ var testsCaseForSubscribe = []struct {
 			messageQueueSize: 1,
 			subscribedOk:     true,
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
 			responseSenderCalled: false,
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
 			},
 		},
@@ -652,24 +655,24 @@ var testsCaseForSubscribe = []struct {
 					return errors.New("fake error")
 				}},
 			sportLineService: &MockLinesService{
-				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *ClientSubscription) ([]*domain.SportLine, error) {
+				FakeCalculate: func(sports []domain.SportType, isNeedDelta bool, subs *model.ClientSubscription) ([]*domain.SportLine, error) {
 					return []*domain.SportLine{
 						{Score: 1.0, Type: domain.Baseball},
 						{Score: 1.5, Type: domain.Soccer},
 					}, nil
 				},
-				FakeIsChanged: func(exist bool, r SportTypeMap, newValue []domain.SportType) bool {
+				FakeIsChanged: func(exist bool, r model.SportTypeMap, newValue []domain.SportType) bool {
 					return true
 				},
 			},
 
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 1, Sports: []domain.SportType{domain.Baseball}, UpdateIntervalSecond: 1},
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Soccer: 1.0}, Task: time.NewTicker(1)},
 			},
 		},
@@ -677,12 +680,12 @@ var testsCaseForSubscribe = []struct {
 			messageQueueSize: 1,
 			subscribedOk:     true,
 			messageQueue: &MessageQueue{
-				data: []*SubscriptionMessageDTO{
+				data: []*MessageToSubscribeDTO{
 					{ClientId: 2, Sports: []domain.SportType{domain.Soccer}, UpdateIntervalSecond: 1},
 				},
 			},
 			responseSenderCalled: false,
-			subscriptions: map[int]*ClientSubscription{
+			subscriptions: map[int]*model.ClientSubscription{
 				1: {Sports: map[domain.SportType]float32{domain.Baseball: 1.0}, Task: time.NewTicker(1)},
 			},
 		},

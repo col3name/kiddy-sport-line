@@ -1,4 +1,4 @@
-package application
+package subscription
 
 import (
 	"sync"
@@ -6,17 +6,17 @@ import (
 
 type MessageQueue struct {
 	mu   sync.Mutex
-	data []*SubscriptionMessageDTO
+	data []*MessageToSubscribeDTO
 }
 
 func NewMessageQueue() *MessageQueue {
 	return &MessageQueue{
 		mu:   sync.Mutex{},
-		data: make([]*SubscriptionMessageDTO, 0),
+		data: make([]*MessageToSubscribeDTO, 0),
 	}
 }
 
-func (s *MessageQueue) Push(dto *SubscriptionMessageDTO) {
+func (s *MessageQueue) Push(dto *MessageToSubscribeDTO) {
 	s.mu.Lock()
 	s.data = append(s.data, dto)
 	s.mu.Unlock()
@@ -30,7 +30,7 @@ func (s *MessageQueue) Pop() {
 	}
 }
 
-func (s *MessageQueue) Peek() *SubscriptionMessageDTO {
+func (s *MessageQueue) Peek() *MessageToSubscribeDTO {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.Empty() {
