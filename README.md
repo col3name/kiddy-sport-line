@@ -1,5 +1,5 @@
 # Line Processor
-![Coverage](https://img.shields.io/badge/Coverage-99.1%25-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-98.7%25-brightgreen)
 ![example workflow](https://github.com/col3name/kiddy-sport-line/actions/workflows/prod.yml/badge.svg)
 
 ![architecture](docs/img/arch.png "Architecture")
