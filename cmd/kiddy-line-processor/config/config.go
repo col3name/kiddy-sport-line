@@ -2,7 +2,7 @@ package config
 
 import (
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
-	str "github.com/col3name/lines/pkg/common/util/stringss"
+	str "github.com/col3name/lines/pkg/common/infrastructure/util/stringss"
 	"os"
 	"strconv"
 )

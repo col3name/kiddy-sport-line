@@ -6,7 +6,7 @@ import (
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
-	str "github.com/col3name/lines/pkg/common/util/stringss"
+	str "github.com/col3name/lines/pkg/common/infrastructure/util/stringss"
 	"io"
 	"os"
 	"time"

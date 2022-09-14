@@ -3,7 +3,7 @@ package sport_line
 import (
 	"github.com/col3name/lines/pkg/common/application/errors"
 	commonDomain "github.com/col3name/lines/pkg/common/domain"
-	"github.com/col3name/lines/pkg/common/util/array"
+	"github.com/col3name/lines/pkg/common/infrastructure/util/array"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain/model"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain/query"
 )

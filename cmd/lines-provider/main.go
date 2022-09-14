@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
-	str "github.com/col3name/lines/pkg/common/util/stringss"
+	str "github.com/col3name/lines/pkg/common/infrastructure/util/stringss"
 
 	"github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
