@@ -16,6 +16,7 @@ import (
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres/repo"
 	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/http/router"
 	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
 	"sync"
@@ -81,10 +82,8 @@ func (s *microservice) performDbMigrationIfNeeded() error {
 
 func (s *microservice) runHttpServer(wg *sync.WaitGroup) {
 	defer wg.Done()
-	router := mux.NewRouter()
-	router.HandleFunc("/ready", httpUtil.ReadyCheckHandler)
-	handler := httpUtil.LogMiddleware(router, s.logger)
-	httpUtil.RunHttpServer(s.conf.HttpUrl, handler, s.logger)
+
+	httpUtil.RunHttpServer(s.conf.HttpUrl, router.Router(), s.logger)
 }
 
 func (s *microservice) runGrpcServer(wg *sync.WaitGroup) {
