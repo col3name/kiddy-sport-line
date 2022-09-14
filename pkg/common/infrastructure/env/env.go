@@ -15,7 +15,8 @@ func GetEnvVariableInt(key string, defaultValue int, logger loggerInterface.Logg
 	if err != nil {
 		logger.Error(msg)
 		return defaultValue
-	} else if value < 1 {
+	}
+	if value < 1 {
 		logger.Error(msg)
 		return defaultValue
 	}

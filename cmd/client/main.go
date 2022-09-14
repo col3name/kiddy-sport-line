@@ -45,8 +45,8 @@ func handleGrpc(logger loggerInterface.Logger, client pb.KiddyLineProcessorClien
 
 	handle := clientHandle{stream: stream, logger: logger}
 
-	go handle.subscribeForSport(sports)
-	go handle.receiveMessage()
+	go handle.subscribeToSports(sports)
+	go handle.receiveMessages()
 	waitChan := make(chan struct{})
 	<-waitChan
 }
@@ -56,49 +56,65 @@ type clientHandle struct {
 	logger loggerInterface.Logger
 }
 
-func (c *clientHandle) subscribeForSport(sports []string) {
+func (c *clientHandle) subscribeToSports(sports []string) {
 	subscriptions := []*pb.SubscribeRequest{
 		{Sports: sports, IntervalInSecond: 1},
 	}
 
-	c.sendSubs(subscriptions, 0)
+	c.sendSubscribeRequests(subscriptions, 0)
 
 	subscriptions = []*pb.SubscribeRequest{
 		{Sports: []string{commonDomain.Soccer.String()}, IntervalInSecond: 1},
 	}
-	c.sendSubs(subscriptions, 10)
+	c.sendSubscribeRequests(subscriptions, 10)
 
 	subscriptions = []*pb.SubscribeRequest{
-		{Sports: []string{
-			commonDomain.Soccer.String(),
-			commonDomain.Football.String(),
-		}, IntervalInSecond: 2},
+		{
+			Sports: []string{
+				commonDomain.Soccer.String(),
+				commonDomain.Football.String(),
+			},
+			IntervalInSecond: 2,
+		},
 	}
-	c.sendSubs(subscriptions, 10)
+	c.sendSubscribeRequests(subscriptions, 10)
 	subscriptions = []*pb.SubscribeRequest{
-		{Sports: []string{
-			commonDomain.Baseball.String(),
-		}, IntervalInSecond: 1},
+		{
+			Sports:           []string{commonDomain.Baseball.String()},
+			IntervalInSecond: 1,
+		},
 	}
-	c.sendSubs(subscriptions, 10)
+	c.sendSubscribeRequests(subscriptions, 10)
 }
 
-func (c *clientHandle) receiveMessage() {
+func (c *clientHandle) receiveMessages() {
 	for {
-		recv, err := c.stream.Recv()
-		if err == io.EOF {
-			c.logger.Println("done", err)
+		if !c.receiveMessage() {
 			break
-		} else if err != nil {
-			c.logger.Fatal("client.RouteChat failed: ", err)
-		}
-		for _, sport := range recv.Sports {
-			fmt.Println(sport.Type, sport.Line)
 		}
 	}
 }
 
-func (c *clientHandle) sendSubs(subscriptions []*pb.SubscribeRequest, sec int) {
+func (c *clientHandle) receiveMessage() bool {
+	recv, err := c.stream.Recv()
+	if err == io.EOF {
+		c.logger.Println("done", err)
+		return false
+	}
+	if err != nil {
+		c.logger.Fatal("client.RouteChat failed: ", err)
+	}
+	c.printSports(recv)
+	return true
+}
+
+func (c *clientHandle) printSports(recv *pb.SubscribeResponse) {
+	for _, sport := range recv.Sports {
+		fmt.Println(sport.Type, sport.Line)
+	}
+}
+
+func (c *clientHandle) sendSubscribeRequests(subscriptions []*pb.SubscribeRequest, sec int) {
 	time.Sleep(time.Duration(sec) * time.Second)
 
 	for _, sub := range subscriptions {
