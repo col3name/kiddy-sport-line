@@ -64,15 +64,6 @@ func (s *microservice) performDbMigrationIfNeeded() error {
 		migrationRepo := provider.MigrationRepo()
 		return migrationRepo.Migrate()
 	})
-
-	//cancelFunc, err := persistense.WithTx(conn, func(tx pgx.Tx) error {
-	//	_, err = tx.Exec(context.Background(), CreateSportLinesSql)
-	//	return err
-	//}, logger)
-	//if cancelFunc != nil {
-	//	defer cancelFunc()
-	//}
-	//return err
 }
 
 func (s *microservice) runHttpServer(wg *sync.WaitGroup) {

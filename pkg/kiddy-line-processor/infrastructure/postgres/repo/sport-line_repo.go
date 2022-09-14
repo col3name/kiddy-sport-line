@@ -29,16 +29,4 @@ func (r *sportLineRepo) Store(model *domain.SportLine) error {
 		return domain.ErrSportLinesDoesNotExist
 	}
 	return nil
-	//
-	//job := func(tx pgx.Tx) error {
-	//
-	//}
-	//cancelFunc, err := persistense.WithTx(r.conn, job, r.logger)
-	//if cancelFunc != nil {
-	//	defer cancelFunc()
-	//}
-	//if err != nil {
-	//	return infrastructure.InternalError(r.logger, err)
-	//}
-	//return nil
 }
