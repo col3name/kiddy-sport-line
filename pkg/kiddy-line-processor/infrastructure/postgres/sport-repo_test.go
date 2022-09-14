@@ -11,16 +11,13 @@ import (
 	"testing"
 )
 
-type inputStore struct {
-	sport *domain.SportLine
-}
-
 type status int
 
 const (
 	failedStartTransaction status = iota
 	failedDoRollback
 	successDoRollback
+	failedDoCommitUserDoesNotExist
 	failedDoCommit
 	successDoCommit
 
@@ -33,6 +30,11 @@ const (
 
 	ok
 )
+
+type inputStore struct {
+	sport       *domain.SportLine
+	errorCommit error
+}
 
 type expectedStore struct {
 	err    error
@@ -80,6 +82,18 @@ func TestStore(t *testing.T) {
 			},
 		},
 		{
+			name: "failed commit transaction sport line doesn't exist",
+			input: &inputStore{
+				sport:       &domain.SportLine{Type: domain.Baseball, Score: 0.744},
+				errorCommit: domain.ErrSportLinesDoesNotExist,
+			},
+			expected: &expectedStore{
+				status: failedDoCommitUserDoesNotExist,
+				err:    errors.ErrInternal,
+				result: pgconn.CommandTag{},
+			},
+		},
+		{
 			name: "failed commit transaction",
 			input: &inputStore{
 				sport: &domain.SportLine{Type: domain.Baseball, Score: 0.744},
@@ -87,7 +101,7 @@ func TestStore(t *testing.T) {
 			expected: &expectedStore{
 				status: failedDoCommit,
 				err:    errors.ErrInternal,
-				result: pgconn.CommandTag{},
+				result: pgconn.CommandTag("UPDATE 1"),
 			},
 		},
 		{
@@ -98,7 +112,7 @@ func TestStore(t *testing.T) {
 			expected: &expectedStore{
 				status: successDoCommit,
 				err:    nil,
-				result: pgconn.CommandTag{},
+				result: pgconn.CommandTag("UPDATE 1"),
 			},
 		},
 		{
@@ -137,10 +151,13 @@ func TestStore(t *testing.T) {
 			repo := NewSportLineRepository(mock, fake.Logger{})
 			err = repo.Store(test.input.sport)
 
-			assert.Equal(t, err, err)
+			assert.Equal(t, test.expected.err, err)
 			checkExpectationsWereMet(t, mock)
 		})
 	}
+}
+func TestName(t *testing.T) {
+
 }
 
 func setupStoreUseCases(mock pgxmock.PgxPoolIface, test struct {
@@ -178,13 +195,20 @@ func setupStoreUseCases(mock pgxmock.PgxPoolIface, test struct {
 			WithArgs(inputScore, inputType).
 			WillReturnError(expectedErr)
 		mock.ExpectRollback().WillReturnError(nil)
+	case failedDoCommitUserDoesNotExist:
+		mock.ExpectBegin().WillReturnError(nil)
+		mock.ExpectExec("UPDATE sport_lines").
+			WithArgs(inputScore, inputType).
+			WillReturnResult(expected.result).
+			WillReturnError(input.errorCommit)
+		mock.ExpectRollback().WillReturnError(expected.err)
 	case failedDoCommit:
 		mock.ExpectBegin().WillReturnError(nil)
 		mock.ExpectExec("UPDATE sport_lines").
 			WithArgs(inputScore, inputType).
 			WillReturnResult(expected.result).
 			WillReturnError(nil)
-		mock.ExpectCommit().WillReturnError(expectedErr)
+		mock.ExpectCommit().WillReturnError(errors.ErrInternal)
 	case successDoCommit:
 		mock.ExpectBegin().WillReturnError(nil)
 		mock.ExpectExec("UPDATE sport_lines").

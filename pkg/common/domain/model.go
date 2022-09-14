@@ -15,8 +15,9 @@ const (
 )
 
 var (
-	ErrUnsupportedSportType = errors.New("unsupported sport type")
-	ErrInvalidScore         = errors.New("invalid score")
+	ErrUnsupportedSportType   = errors.New("unsupported sport type")
+	ErrInvalidScore           = errors.New("invalid score")
+	ErrSportLinesDoesNotExist = errors.New("sport line doesn't exist")
 )
 
 func (s SportType) String() string {

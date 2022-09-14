@@ -25,6 +25,7 @@ func WithTx(conn postgres.PgxPoolIface, job func(pgx.Tx) error, logger logger.Lo
 		err2 := tx.Commit(timeout)
 		if err2 != nil {
 			logger.Error(err2)
+			return cancel, err2
 		}
 	}
 

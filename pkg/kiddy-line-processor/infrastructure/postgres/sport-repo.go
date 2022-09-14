@@ -29,8 +29,7 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 	sql, data := r.getSqlQueryAndData(sportTypes, countSportTypes)
 	rows, err := r.conn.Query(context.Background(), sql, data...)
 	if err != nil {
-		contains := strings.Contains(err.Error(), appErr.TableNotExistMessage)
-		if contains {
+		if r.isTableNotExistError(err) {
 			return nil, appErr.ErrTableNotExist
 		}
 		return nil, infrastructure.InternalError(r.logger, err)
@@ -40,8 +39,13 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 	}
 	defer rows.Close()
 
+	return r.scanSportLines(rows)
+}
+
+func (r *SportRepoImpl) scanSportLines(rows pgx.Rows) ([]*domain.SportLine, error) {
 	var sport domain.SportLine
 	var sports []*domain.SportLine
+	var err error
 	for rows.Next() {
 		err = rows.Scan(&sport.Score, &sport.Type)
 		if err != nil {
@@ -52,12 +56,23 @@ func (r *SportRepoImpl) GetLinesBySportTypes(sportTypes []domain.SportType) ([]*
 	return sports, nil
 }
 
+func (r *SportRepoImpl) isTableNotExistError(err error) bool {
+	return strings.Contains(err.Error(), appErr.TableNotExistMessage)
+}
+
 func (r *SportRepoImpl) Store(model *domain.SportLine) error {
 	const sql = "UPDATE sport_lines SET score = $1 WHERE sport_type = $2;"
 
 	job := func(tx pgx.Tx) error {
-		_, err := tx.Exec(context.Background(), sql, model.Score, model.Type)
-		return err
+		result, err := tx.Exec(context.Background(), sql, model.Score, model.Type)
+		if err != nil {
+			return err
+		}
+		rowsAffected := result.RowsAffected()
+		if rowsAffected == 0 {
+			return domain.ErrSportLinesDoesNotExist
+		}
+		return nil
 	}
 	cancelFunc, err := WithTx(r.conn, job, r.logger)
 	if cancelFunc != nil {
