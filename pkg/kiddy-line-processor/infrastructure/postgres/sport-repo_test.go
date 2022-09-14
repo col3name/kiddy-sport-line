@@ -132,53 +132,60 @@ func TestStore(t *testing.T) {
 			}
 			defer mock.Close()
 
-			repo := NewSportLineRepository(mock, fake.Logger{})
 			expected := test.expected
 			expectedErr := expected.err
-			switch expected.status {
-			case ok:
-				mock.ExpectBegin()
-				exec := mock.ExpectExec("UPDATE sport_lines")
-				if expectedErr != nil {
-					exec.WillReturnError(expectedErr)
-					mock.ExpectRollback()
-				} else {
-					exec.WillReturnResult(expected.result)
-					mock.ExpectCommit().WillReturnError(nil)
-				}
-			case failedStartTransaction:
-				mock.ExpectBegin().WillReturnError(expectedErr)
-			case failedDoRollback:
-				mock.ExpectBegin().WillReturnError(nil)
-				mock.ExpectExec("UPDATE sport_lines").WillReturnError(expectedErr)
-				mock.ExpectRollback().WillReturnError(expectedErr)
-			case successDoRollback:
-				mock.ExpectBegin().WillReturnError(nil)
-				mock.ExpectExec("UPDATE sport_lines").
-					WithArgs(test.input.sport.Score, test.input.sport.Type).
-					WillReturnError(expectedErr)
-				mock.ExpectRollback().WillReturnError(nil)
-			case failedDoCommit:
-				mock.ExpectBegin().WillReturnError(nil)
-				mock.ExpectExec("UPDATE sport_lines").
-					WithArgs(test.input.sport.Score, test.input.sport.Type).
-					WillReturnResult(test.expected.result).
-					WillReturnError(nil)
-				mock.ExpectCommit().WillReturnError(expectedErr)
-			case successDoCommit:
-				mock.ExpectBegin().WillReturnError(nil)
-				mock.ExpectExec("UPDATE sport_lines").
-					WillReturnResult(expected.result).
-					WillReturnError(nil)
-				mock.ExpectCommit().WillReturnError(nil)
-			}
+			setupStoreUseCases(expected, mock, expectedErr, test)
 
+			repo := NewSportLineRepository(mock, fake.Logger{})
 			err = repo.Store(test.input.sport)
+
 			assert.Equal(t, err, err)
-			if err = mock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
+			checkExpectationsWereMet(t, err, mock)
 		})
+	}
+}
+
+func setupStoreUseCases(expected *expectedStore, mock pgxmock.PgxPoolIface, expectedErr error, test struct {
+	name     string
+	input    *inputStore
+	expected *expectedStore
+}) {
+	switch expected.status {
+	case ok:
+		mock.ExpectBegin()
+		exec := mock.ExpectExec("UPDATE sport_lines")
+		if expectedErr != nil {
+			exec.WillReturnError(expectedErr)
+			mock.ExpectRollback()
+		} else {
+			exec.WillReturnResult(expected.result)
+			mock.ExpectCommit().WillReturnError(nil)
+		}
+	case failedStartTransaction:
+		mock.ExpectBegin().WillReturnError(expectedErr)
+	case failedDoRollback:
+		mock.ExpectBegin().WillReturnError(nil)
+		mock.ExpectExec("UPDATE sport_lines").WillReturnError(expectedErr)
+		mock.ExpectRollback().WillReturnError(expectedErr)
+	case successDoRollback:
+		mock.ExpectBegin().WillReturnError(nil)
+		mock.ExpectExec("UPDATE sport_lines").
+			WithArgs(test.input.sport.Score, test.input.sport.Type).
+			WillReturnError(expectedErr)
+		mock.ExpectRollback().WillReturnError(nil)
+	case failedDoCommit:
+		mock.ExpectBegin().WillReturnError(nil)
+		mock.ExpectExec("UPDATE sport_lines").
+			WithArgs(test.input.sport.Score, test.input.sport.Type).
+			WillReturnResult(test.expected.result).
+			WillReturnError(nil)
+		mock.ExpectCommit().WillReturnError(expectedErr)
+	case successDoCommit:
+		mock.ExpectBegin().WillReturnError(nil)
+		mock.ExpectExec("UPDATE sport_lines").
+			WillReturnResult(expected.result).
+			WillReturnError(nil)
+		mock.ExpectCommit().WillReturnError(nil)
 	}
 }
 
@@ -290,70 +297,88 @@ func TestGetSportLines(t *testing.T) {
 			}
 			defer mock.Close()
 
-			repo := NewSportLineRepository(mock, fake.Logger{})
-
 			input := test.input
 			expected := test.expected
-			var data []interface{}
-			for _, sportType := range input.sportTypes {
-				data = append(data, sportType)
-			}
-			switch input.status {
-			case tableNotExist:
-				mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").WithArgs(data...).
-					WillReturnError(input.queryErr)
-			case failedQuery:
-				mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").WithArgs(data...).
-					WillReturnError(input.queryErr)
-			case rowsError:
-				r := pgxmock.NewRows([]string{"exists"}).AddRow(&domain.SportLine{
-					Type:  domain.Baseball,
-					Score: 0.744,
-				})
-				r.RowError(0, errors.ErrInternal)
-				mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").
-					WillReturnError(nil).
-					WillReturnRows(r.CloseError(errors.ErrInternal))
-			case failedRowScan:
-				rs := pgxmock.NewRows([]string{"type"})
-				mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").
-					WillReturnError(nil).
-					WillReturnRows(rs.AddRow("line.Score"))
-			case multipleTypes:
-				var args []interface{}
-				for _, sportType := range input.sportTypes {
-					args = append(args, sportType)
-				}
-				sql := "SELECT score,sport_type FROM sport_lines WHERE sport_type = (.+) UNION ALL SELECT score,sport_type FROM sport_lines WHERE sport_type =(.+);"
-				mock.ExpectQuery(sql).
-					WithArgs(args...)
-			case ok:
-				rs := pgxmock.NewRows([]string{"score", "type"})
-				for _, line := range expected.lines {
-					rs.AddRow(line.Score, line.Type)
-				}
-				mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").
-					WillReturnError(nil).
-					WillReturnRows(rs)
-			}
 
+			sportTypes := fillData(input)
+
+			setupGetSportLinesUseCases(input, mock, sportTypes, expected)
+
+			repo := NewSportLineRepository(mock, fake.Logger{})
 			types, err := repo.GetLinesBySportTypes(input.sportTypes)
 
-			assert.Equal(t, expected.err, err)
-			if expected.lines != nil {
-				assert.Equal(t, len(expected.lines), len(types))
-			} else {
-				assert.Nil(t, types)
-			}
-			for i, expectedLine := range expected.lines {
-				actualLine := types[i]
-				assert.Equal(t, expectedLine.Type, actualLine.Type)
-				assert.Equal(t, expectedLine.Score, actualLine.Score)
-			}
+			compareLines(t, expected, err, types)
 
-			if err = mock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
+			checkExpectationsWereMet(t, err, mock)
 		})
+	}
+}
+
+func checkExpectationsWereMet(t *testing.T, err error, mock pgxmock.PgxPoolIface) {
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
+}
+
+func fillData(input *inputGetLineBySport) []interface{} {
+	var data []interface{}
+	for _, sportType := range input.sportTypes {
+		data = append(data, sportType)
+	}
+	return data
+}
+
+func setupGetSportLinesUseCases(input *inputGetLineBySport, mock pgxmock.PgxPoolIface, data []interface{}, expected *expectedGetLineBySport) {
+	switch input.status {
+	case tableNotExist:
+		mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").WithArgs(data...).
+			WillReturnError(input.queryErr)
+	case failedQuery:
+		mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").WithArgs(data...).
+			WillReturnError(input.queryErr)
+	case rowsError:
+		r := pgxmock.NewRows([]string{"exists"}).AddRow(&domain.SportLine{
+			Type:  domain.Baseball,
+			Score: 0.744,
+		})
+		r.RowError(0, errors.ErrInternal)
+		mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").
+			WillReturnError(nil).
+			WillReturnRows(r.CloseError(errors.ErrInternal))
+	case failedRowScan:
+		rs := pgxmock.NewRows([]string{"type"})
+		mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").
+			WillReturnError(nil).
+			WillReturnRows(rs.AddRow("line.Score"))
+	case multipleTypes:
+		var args []interface{}
+		for _, sportType := range input.sportTypes {
+			args = append(args, sportType)
+		}
+		sql := "SELECT score,sport_type FROM sport_lines WHERE sport_type = (.+) UNION ALL SELECT score,sport_type FROM sport_lines WHERE sport_type =(.+);"
+		mock.ExpectQuery(sql).
+			WithArgs(args...)
+	case ok:
+		rs := pgxmock.NewRows([]string{"score", "type"})
+		for _, line := range expected.lines {
+			rs.AddRow(line.Score, line.Type)
+		}
+		mock.ExpectQuery("SELECT score,sport_type FROM sport_lines").
+			WillReturnError(nil).
+			WillReturnRows(rs)
+	}
+}
+
+func compareLines(t *testing.T, expected *expectedGetLineBySport, err error, types []*domain.SportLine) {
+	assert.Equal(t, expected.err, err)
+	if expected.lines != nil {
+		assert.Equal(t, len(expected.lines), len(types))
+	} else {
+		assert.Nil(t, types)
+	}
+	for i, expectedLine := range expected.lines {
+		actualLine := types[i]
+		assert.Equal(t, expectedLine.Type, actualLine.Type)
+		assert.Equal(t, expectedLine.Score, actualLine.Score)
 	}
 }
