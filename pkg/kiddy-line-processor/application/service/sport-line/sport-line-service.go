@@ -53,15 +53,15 @@ func (s *sportLineServiceImpl) IsSubscriptionChanged(exist bool, subMap model.Sp
 	return !s.isValidSubscription(subMap, sports) && s.isSubscriptionEqual(exist, subMap, sports)
 }
 
-func (s *sportLineServiceImpl) isSubscriptionEqual(exist bool, subMap model.SportTypeMap, sports []commonDomain.SportType) bool {
-	return !exist || exist && !s.isSubsripitonEqual(subMap, sports)
+func (s *sportLineServiceImpl) isSubscriptionEqual(exist bool, oldSubscription model.SportTypeMap, newSubscription []commonDomain.SportType) bool {
+	return !exist || exist && !s.compareOldAndNewSubscription(oldSubscription, newSubscription)
 }
 
 func (s *sportLineServiceImpl) isValidSubscription(subMap model.SportTypeMap, sports []commonDomain.SportType) bool {
 	return subMap == nil || array.EmptyST(sports)
 }
 
-func (s *sportLineServiceImpl) isSubsripitonEqual(oldSubscription model.SportTypeMap, newSubscription []commonDomain.SportType) bool {
+func (s *sportLineServiceImpl) compareOldAndNewSubscription(oldSubscription model.SportTypeMap, newSubscription []commonDomain.SportType) bool {
 	if len(oldSubscription) != len(newSubscription) {
 		return false
 	}

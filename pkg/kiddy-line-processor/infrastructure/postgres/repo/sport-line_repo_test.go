@@ -5,6 +5,7 @@ import (
 	"github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/common/infrastructure/postgres"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/fake"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service"
 	"github.com/jackc/pgconn"
 	"github.com/pashagolub/pgxmock"
 	"github.com/stretchr/testify/assert"
@@ -35,12 +36,14 @@ type expectedStore struct {
 	status status
 }
 
+type storeTest struct {
+	name     string
+	input    *inputStore
+	expected *expectedStore
+}
+
 func TestStore(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *inputStore
-		expected *expectedStore
-	}{
+	tests := []storeTest{
 		{
 			name: "failed start transaction",
 			input: &inputStore{
@@ -139,22 +142,20 @@ func TestStore(t *testing.T) {
 			}
 			defer mock.Close()
 
-			setupStoreUseCases(mock, test)
+			setupStoreUseCases(mock, &test)
 
-			repo := NewSportLineRepository(mock, fake.Logger{})
-			err = repo.Store(test.input.sport)
-
+			uow := NewUnitOfWork(mock, fake.Logger{})
+			err = uow.Execute(func(rp service.RepositoryProvider) error {
+				repo := rp.SportLineRepo()
+				return repo.Store(test.input.sport)
+			})
 			assert.Equal(t, test.expected.err, err)
 			postgres.CheckExpectationsWereMet(t, mock)
 		})
 	}
 }
 
-func setupStoreUseCases(mock pgxmock.PgxPoolIface, test struct {
-	name     string
-	input    *inputStore
-	expected *expectedStore
-}) {
+func setupStoreUseCases(mock pgxmock.PgxPoolIface, test *storeTest) {
 	input := test.input
 	expected := test.expected
 	expectedErr := expected.err

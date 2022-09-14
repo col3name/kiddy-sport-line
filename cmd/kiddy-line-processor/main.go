@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"github.com/col3name/lines/cmd/kiddy-line-processor/config"
 	"github.com/col3name/lines/pkg/common/application/errors"
 	loggerInterface "github.com/col3name/lines/pkg/common/application/logger"
@@ -9,16 +8,14 @@ import (
 	"github.com/col3name/lines/pkg/common/infrastructure/logrusLogger"
 	commonPostgres "github.com/col3name/lines/pkg/common/infrastructure/postgres"
 	netHttp "github.com/col3name/lines/pkg/common/infrastructure/transport/net-http"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/application/sport-line"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service/sport-line"
 	domainQuery "github.com/col3name/lines/pkg/kiddy-line-processor/domain/query"
-	domainRepo "github.com/col3name/lines/pkg/kiddy-line-processor/domain/repo"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/adapter"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres/query"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/postgres/repo"
 	grpcServer "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc"
 	pb "github.com/col3name/lines/pkg/kiddy-line-processor/infrastructure/transport/grpc/proto"
-	"github.com/jackc/pgx/v4"
 	"google.golang.org/grpc"
 	"net"
 	"net/http"
@@ -28,43 +25,34 @@ import (
 
 func main() {
 	logger := logrusLogger.New()
-	conf := config.SetupConfig(logger)
+	conf := config.ParseConfig(logger)
 	conn := commonPostgres.SetupDbConnection(conf.DbUrl, logger)
 
-	sportLineRepo := repo.NewSportLineRepository(conn, logger)
+	unitOfWork := repo.NewUnitOfWork(conn, logger)
 	sportLineQueryService := query.NewSportLineQueryService(conn, logger)
+	linesProviderAdapter := adapter.NewLinesProviderAdapter(conf.LinesProviderUrl, logger)
 
-	err := performDbMigrationIfNeeded(sportLineQueryService, conn, logger)
-	if err != nil {
-		logger.Fatal(err)
-	}
-
-	s := &service{
-		linesProviderAdapter: adapter.NewLinesProviderAdapter(conf.LinesProviderUrl, logger),
-		conf:                 conf,
-		sportLineRepo:        sportLineRepo,
-		logger:               logger,
+	s := &microservice{
+		linesProviderAdapter:  linesProviderAdapter,
+		conf:                  conf,
+		logger:                logger,
+		uow:                   unitOfWork,
+		sportLineQueryService: sportLineQueryService,
 	}
 	s.run()
 }
 
-const CreateSportLinesSql = `BEGIN TRANSACTION;
-				CREATE TABLE sport_lines
-				(
-					id         UUID PRIMARY KEY UNIQUE NOT NULL,
-					sport_type VARCHAR(255)            NOT NULL,
-					score      REAL                     NOT NULL
-				);
-				
-				INSERT INTO sport_lines (id, sport_type, score)
-				VALUES ('ce267749-dec9-4d39-ad81-8b4cd8c381d2', 'baseball', 1.0),
-					   ('ba9babe8-06d4-450e-8e9a-66b7512b5bd2', 'soccer', 1.0),
-					   ('4b9d52e2-1473-4cdb-bba8-c1c1cac933f5', 'football', 1.0);
-				END ;`
+type microservice struct {
+	conf                  *config.Config
+	logger                loggerInterface.Logger
+	linesProviderAdapter  adapter.LinesProviderAdapter
+	sportLineQueryService domainQuery.SportLineQueryService
+	uow                   service.UnitOfWork
+}
 
-func performDbMigrationIfNeeded(sportLineRepo domainQuery.SportLineQueryService, conn commonPostgres.PgxPoolIface, logger loggerInterface.Logger) error {
+func (s *microservice) performDbMigrationIfNeeded() error {
 	defaultSubscriptions := []commonDomain.SportType{commonDomain.Baseball}
-	_, err := sportLineRepo.GetLinesBySportTypes(defaultSubscriptions)
+	_, err := s.sportLineQueryService.GetLinesBySportTypes(defaultSubscriptions)
 	if err == nil {
 		return nil
 	}
@@ -72,25 +60,22 @@ func performDbMigrationIfNeeded(sportLineRepo domainQuery.SportLineQueryService,
 		return err
 	}
 
-	cancelFunc, err := postgres.WithTx(conn, func(tx pgx.Tx) error {
-		_, err = tx.Exec(context.Background(), CreateSportLinesSql)
-		return err
-	}, logger)
-	if cancelFunc != nil {
-		defer cancelFunc()
-	}
-	return err
+	return s.uow.Execute(func(provider service.RepositoryProvider) error {
+		migrationRepo := provider.MigrationRepo()
+		return migrationRepo.Migrate()
+	})
+
+	//cancelFunc, err := persistense.WithTx(conn, func(tx pgx.Tx) error {
+	//	_, err = tx.Exec(context.Background(), CreateSportLinesSql)
+	//	return err
+	//}, logger)
+	//if cancelFunc != nil {
+	//	defer cancelFunc()
+	//}
+	//return err
 }
 
-type service struct {
-	conf                  *config.Config
-	logger                loggerInterface.Logger
-	sportLineRepo         domainRepo.SportLineRepo
-	linesProviderAdapter  adapter.LinesProviderAdapter
-	sportLineQueryService domainQuery.SportLineQueryService
-}
-
-func (s *service) runHttpServer(wg *sync.WaitGroup) {
+func (s *microservice) runHttpServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	http.HandleFunc("/ready", netHttp.ReadyCheckHandler)
 
@@ -101,7 +86,7 @@ func (s *service) runHttpServer(wg *sync.WaitGroup) {
 	}
 }
 
-func (s *service) runGrpcServer(wg *sync.WaitGroup) {
+func (s *microservice) runGrpcServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	sportLineService := sport_line.NewSportLineService(s.sportLineQueryService)
 
@@ -119,13 +104,15 @@ func (s *service) runGrpcServer(wg *sync.WaitGroup) {
 	}
 }
 
-func (s *service) runSpotLineUpdateWorkers() {
+func (s *microservice) runSpotLineUpdateWorkers() {
 	for _, sportType := range commonDomain.SupportSports {
 		go s.updateSportLineWorker(sportType)
 	}
 }
 
-func (s *service) updateSportLineWorker(sportType commonDomain.SportType) {
+func (s *microservice) updateSportLineWorker(sportType commonDomain.SportType) {
+	var job func(rp service.RepositoryProvider) error
+
 	for {
 		sleepDuration := time.Duration(s.conf.UpdatePeriod) * time.Second
 		sportLine, err := s.linesProviderAdapter.GetLineBySport(sportType)
@@ -134,7 +121,14 @@ func (s *service) updateSportLineWorker(sportType commonDomain.SportType) {
 			time.Sleep(sleepDuration)
 			continue
 		}
-		err = s.sportLineRepo.Store(sportLine)
+
+		job = func(rp service.RepositoryProvider) error {
+			sportLineRepo := rp.SportLineRepo()
+			return sportLineRepo.Store(sportLine)
+		}
+
+		err = s.uow.Execute(job)
+		//err = s.sportLineRepo.Store(sportLine)
 		if err != nil {
 			s.logger.Error(err)
 		}
@@ -142,9 +136,13 @@ func (s *service) updateSportLineWorker(sportType commonDomain.SportType) {
 	}
 }
 
-func (s *service) run() {
+func (s *microservice) run() {
 	var wg sync.WaitGroup
 	wg.Add(2)
+	err := s.performDbMigrationIfNeeded()
+	if err != nil {
+		s.logger.Fatal(err)
+	}
 	go s.runHttpServer(&wg)
 	go s.runGrpcServer(&wg)
 	go s.runSpotLineUpdateWorkers()

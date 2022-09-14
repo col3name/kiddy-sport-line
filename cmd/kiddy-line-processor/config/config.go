@@ -16,7 +16,7 @@ type Config struct {
 	DbUrl            string
 }
 
-func SetupConfig(logger loggerInterface.Logger) *Config {
+func ParseConfig(logger loggerInterface.Logger) *Config {
 	updatePeriod := getEnvVariableInt("UPDATE_INTERVAL", 1, logger)
 	linesProviderUrl := getEnvVariable("LINES_PROVIDER_URL", "http://localhost:8000")
 	dbURL := getEnvVariable("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/lines")

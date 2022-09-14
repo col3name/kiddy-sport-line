@@ -5,7 +5,7 @@ import (
 	"github.com/col3name/lines/pkg/common/domain"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/fake"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service"
-	"github.com/col3name/lines/pkg/kiddy-line-processor/application/sport-line"
+	"github.com/col3name/lines/pkg/kiddy-line-processor/application/service/sport-line"
 	"github.com/col3name/lines/pkg/kiddy-line-processor/domain/model"
 	"github.com/stretchr/testify/assert"
 	"reflect"
