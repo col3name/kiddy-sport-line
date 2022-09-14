@@ -36,10 +36,6 @@ type SoccerResp struct {
 	} `json:"lines"`
 }
 
-type LinesProviderAdapter interface {
-	GetLineBySport(sportType commonDomain.SportType) (*commonDomain.SportLine, error)
-}
-
 type linesProviderAdapter struct {
 	linesProviderUrl string
 	logger           logger.Logger

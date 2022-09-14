@@ -31,23 +31,35 @@ func main() {
 	unitOfWork := repo.NewUnitOfWork(conn, logger)
 	sportLineQueryService := query.NewSportLineQueryService(conn, logger)
 	linesProviderAdapter := adapter.NewLinesProviderAdapter(conf.LinesProviderUrl, logger)
+	newSportLineUpdateService := sport_line.NewSportLinesUpdateService(conf.UpdatePeriod, linesProviderAdapter, unitOfWork)
 
-	s := &microservice{
-		linesProviderAdapter:  linesProviderAdapter,
-		conf:                  conf,
-		logger:                logger,
-		uow:                   unitOfWork,
-		sportLineQueryService: sportLineQueryService,
-	}
+	s := newMicroservice(conf, unitOfWork, logger, sportLineQueryService, newSportLineUpdateService)
 	s.run()
 }
 
 type microservice struct {
-	conf                  *config.Config
-	logger                loggerInterface.Logger
-	linesProviderAdapter  adapter.LinesProviderAdapter
-	sportLineQueryService domainQuery.SportLineQueryService
-	uow                   service.UnitOfWork
+	conf                    *config.Config
+	logger                  loggerInterface.Logger
+	sportLineQueryService   domainQuery.SportLineQueryService
+	uow                     service.UnitOfWork
+	sportLinesUpdateService sport_line.SportLinesUpdateService
+}
+
+func newMicroservice(
+	conf *config.Config,
+	uow service.UnitOfWork,
+	logger loggerInterface.Logger,
+	sportLineQueryService domainQuery.SportLineQueryService,
+	sportLineUpdateService sport_line.SportLinesUpdateService,
+) *microservice {
+
+	return &microservice{
+		conf:                    conf,
+		logger:                  logger,
+		uow:                     uow,
+		sportLineQueryService:   sportLineQueryService,
+		sportLinesUpdateService: sportLineUpdateService,
+	}
 }
 
 func (s *microservice) performDbMigrationIfNeeded() error {
@@ -94,28 +106,14 @@ func (s *microservice) runGrpcServer(wg *sync.WaitGroup) {
 
 func (s *microservice) runSpotLineUpdateWorkers() {
 	for _, sportType := range commonDomain.SupportSports {
-		go s.updateSportLineWorker(sportType)
+		go s.runUpdateSportLineWorker(sportType)
 	}
 }
 
-func (s *microservice) updateSportLineWorker(sportType commonDomain.SportType) {
-	var job func(rp service.RepositoryProvider) error
-
+func (s *microservice) runUpdateSportLineWorker(sportType commonDomain.SportType) {
+	sleepDuration := time.Duration(s.conf.UpdatePeriod) * time.Second
 	for {
-		sleepDuration := time.Duration(s.conf.UpdatePeriod) * time.Second
-		sportLine, err := s.linesProviderAdapter.GetLineBySport(sportType)
-		if err != nil {
-			s.logger.Error(err)
-			time.Sleep(sleepDuration)
-			continue
-		}
-
-		job = func(rp service.RepositoryProvider) error {
-			sportLineRepo := rp.SportLineRepo()
-			return sportLineRepo.Store(sportLine)
-		}
-
-		err = s.uow.Execute(job)
+		err := s.sportLinesUpdateService.Update(sportType)
 		if err != nil {
 			s.logger.Error(err)
 		}
