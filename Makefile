@@ -29,3 +29,5 @@ stop:
 
 reload:
 	make down && make build
+
+verify: lint build tests
